@@ -1,0 +1,31 @@
+name: Validate Framework
+
+# Dogfoods invAIriant's own contracts: schemas parse, example configs and
+# findings validate against them, and every lens file keeps its structure.
+# See scripts/validate_framework.py.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation dependencies
+        run: pip install --quiet jsonschema pyyaml
+
+      - name: Run framework self-validation
+        run: python3 scripts/validate_framework.py

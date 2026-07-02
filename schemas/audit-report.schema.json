@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://invairiant.org/schemas/audit-report.schema.json",
+  "title": "invAIriant Audit Report",
+  "description": "Machine-readable form of an audit report. Interpretation rules: a high average lens score never cancels an S0/S1 finding; verdicts derive from the severity model, not from score arithmetic; rejected hypotheses are kept, not deleted.",
+  "type": "object",
+  "required": ["title", "date", "audit_type", "scope", "lens_scores", "findings", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "date": { "type": "string", "format": "date" },
+    "audit_type": {
+      "enum": ["pr", "tactical", "full-scale", "event-triggered", "closure-verification"]
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "description": "Project type from invairiant.config.yml, e.g. infra-service." },
+        "commit_range": { "type": "string" },
+        "branch": { "type": "string" },
+        "phase": { "type": "string", "description": "Roadmap phase or milestone, if the project uses phases." }
+      }
+    },
+    "scope": { "type": "string", "description": "What was audited and, just as important, what was not." },
+    "inputs_reviewed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files, diffs, docs, CI runs, logs, and tool outputs actually reviewed."
+    },
+    "participants": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Humans and AI agents, with roles, e.g. 'jsmith (security auditor)', 'claude (lens auditor: parnas, turing)'."
+    },
+    "config_ref": { "type": "string", "description": "Path to the invairiant.config.yml used." },
+    "lens_scores": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["lens", "score", "verdict"],
+        "additionalProperties": false,
+        "properties": {
+          "pack": { "type": "string" },
+          "lens": { "type": "string" },
+          "score": { "type": "number", "minimum": 0, "maximum": 10 },
+          "verdict": { "type": "string", "description": "One-line justification. Must reference evidence, not taste." },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Pointers backing the score: file:lines, finding ids, test names, doc sections."
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "./finding.schema.json" }
+    },
+    "observations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/note" },
+      "description": "Evidence-light items worth recording. Never merged into findings without evidence."
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/note" },
+      "description": "Proposed explanations that were not verified, including candidates rejected by evidence verification."
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/note" }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["verdict"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": { "enum": ["pass", "pass_with_conditions", "fail"] },
+        "executive_summary": { "type": "string" },
+        "strongest_lens": { "type": "string" },
+        "weakest_lens": { "type": "string" },
+        "weakest_reason": { "type": "string" },
+        "required_actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action"],
+            "additionalProperties": false,
+            "properties": {
+              "action": { "type": "string" },
+              "finding_ids": { "type": "array", "items": { "type": "string" } },
+              "owner": { "type": "string" },
+              "deadline": { "type": "string" },
+              "blocking": { "type": "boolean", "description": "True if this action gates the merge/release/phase transition." }
+            }
+          }
+        }
+      }
+    },
+    "evidence_appendix": { "type": "string", "description": "Longer excerpts, command outputs, and reproduction notes." },
+    "reviewer_notes": { "type": "string" }
+  },
+  "$defs": {
+    "note": {
+      "type": "object",
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "lens": { "type": "string" },
+        "follow_up": { "type": "string", "description": "What evidence would promote or retire this item." },
+        "rejected_reason": { "type": "string", "description": "For hypotheses rejected by evidence verification: why." }
+      }
+    }
+  }
+}

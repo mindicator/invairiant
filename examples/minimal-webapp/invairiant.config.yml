@@ -1,0 +1,50 @@
+# invAIriant config — minimal webapp example
+# Validates against ../../schemas/invairiant.config.schema.json
+# Fictional project: "shelfwise", a book-club webapp (Next.js + Postgres),
+# one small team, ~15k LOC. Small mandatory set, no heavy packs.
+
+project:
+  name: shelfwise
+  type: minimal-webapp
+  description: Book-club webapp; users, shelves, reading progress, share links.
+
+canonical_docs:
+  - README.md
+  - docs/ARCHITECTURE.md
+
+mandatory_lenses:
+  - mcconnell
+  - parnas
+  - security-threat
+  - kernighan
+
+optional_lens_packs:
+  - implementation
+
+critical_lenses:
+  - security-threat
+
+risk_assets:
+  - user accounts and reading data
+  - availability
+
+evidence:
+  require_file_or_diff_reference: true
+  allow_observations_without_evidence: true
+  allow_findings_without_evidence: false   # hard rule; kept visible on purpose
+
+severity_policy:
+  low_score_threshold: 6.0
+  critical_domain_threshold: 5.0
+  id_prefix: SHW
+
+audit:
+  report_dir: docs/audits
+  cadence:
+    tactical: monthly
+    full_scale: quarterly
+
+evidence_adapters:
+  - vitest
+  - eslint
+  - github-actions

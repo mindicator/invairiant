@@ -1,0 +1,71 @@
+[
+  {
+    "id": "CNV-041",
+    "severity": "S0",
+    "lens": "security-threat",
+    "category": "SECRET_LEAK",
+    "claim": "The worker crash-recovery path serializes the entire job environment, including tenant-scoped API keys, into the shared operator log.",
+    "evidence": [
+      {
+        "type": "file_lines",
+        "file": "worker/recover.go",
+        "lines": "88-104",
+        "commit": "a41f9cc",
+        "description": "log.Errorw(\"job crashed\", \"env\", job.Env) where job.Env carries CONVEYOR_TENANT_KEY set in worker/exec.go:57-63"
+      },
+      {
+        "type": "runtime_log",
+        "source": "worker eu-1-w7, INC-118",
+        "excerpt": "{\"level\":\"error\",\"msg\":\"job crashed\",\"env\":{\"CONVEYOR_TENANT_KEY\":\"ck_live_9t[REDACTED]\"}}"
+      },
+      {
+        "type": "doc_code_contradiction",
+        "doc": "docs/THREAT_MODEL.md:141",
+        "code": "worker/recover.go:88-104",
+        "description": "THREAT_MODEL marks 'credential exposure via logs' mitigated by 'env scrubbing in worker'; no scrubbing exists (rg -n scrub worker/ -> 0 hits)."
+      }
+    ],
+    "risk": "Any operator and the log-pipeline vendor can read live tenant credentials; INC-118 already wrote at least 7 tenants' keys to retained logs. Direct hit on risk assets 'tenant credentials' and 'operator safety'.",
+    "recommendation": "Scrub/allowlist env at the logging boundary; rotate all keys present in retained logs since the incident; add a no-secrets conformance test on the log schema; correct THREAT_MODEL only after the control exists.",
+    "confidence": "high",
+    "status": "verified",
+    "source": "hybrid",
+    "affected_components": ["worker", "distrib"],
+    "verification": {
+      "verified_by": "claude-agent-2",
+      "method": "read worker/recover.go and worker/exec.go at a41f9cc; grepped for scrub/redact; cross-read THREAT_MODEL.md:141; confirmed INC-118 log excerpt",
+      "notes": "Threat-model row closed on paper only; control absent in code."
+    }
+  },
+  {
+    "id": "CNV-042",
+    "severity": "S1",
+    "lens": "lamport",
+    "category": "REDUNDANCY_COLLAPSE",
+    "claim": "Webhook delivery retries re-POST without an idempotency key, so a timeout-then-success sequence applies tenant side effects twice.",
+    "evidence": [
+      {
+        "type": "file_lines",
+        "file": "distrib/webhook.go",
+        "lines": "71-96",
+        "commit": "a41f9cc",
+        "description": "retry loop re-sends the identical request; no Idempotency-Key header, no delivery ULID"
+      },
+      {
+        "type": "missing_test",
+        "description": "no test under distrib/ exercises timeout-after-delivery; distrib/*_test.go covers connection timeouts only"
+      }
+    ],
+    "risk": "Tenants performing non-idempotent actions on webhooks get duplicate side effects during network degradation — data corruption on the tenant side, attributed to conveyor.",
+    "recommendation": "Add a per-delivery idempotency key (job ULID + attempt-independent delivery ID), document the contract, and add the timeout-after-delivery test.",
+    "confidence": "high",
+    "status": "verified",
+    "source": "ai",
+    "affected_components": ["distrib"],
+    "verification": {
+      "verified_by": "claude-agent-2",
+      "method": "read distrib/webhook.go:71-96 at a41f9cc; searched distrib/*_test.go for timeout coverage",
+      "notes": "Reproduced conceptually; no double-delivery test exists."
+    }
+  }
+]

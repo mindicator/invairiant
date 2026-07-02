@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local agent-harness state (machine-specific; install the skill per skill/README.md)
+.claude/
+
+# Python (validation tooling)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# Node (potential future product tooling)
+node_modules/
+npm-debug.log*
+dist/
+build/
+
+# invAIriant local audit output (projects using the framework may commit
+# their own audits; this repo does not carry generated reports)
+/audits-local/
+*.audit.local.md
+
+# Scratch / temp
+scratchpad/
+tmp/
+*.tmp
+
+# Stray spreadsheets dropped into the working dir (not part of the framework)
+*.xlsx

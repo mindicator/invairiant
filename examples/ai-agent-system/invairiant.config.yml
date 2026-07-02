@@ -1,0 +1,70 @@
+# invAIriant config — AI agent system example
+# Validates against ../../schemas/invairiant.config.schema.json
+# Fictional project: "ticketpilot", an LLM agent that triages support
+# tickets and executes bounded remediations (Python). The ai-generated-code
+# pack is first-class here, and oracle/authority lenses are mandatory.
+
+project:
+  name: ticketpilot
+  type: ai-agent-system
+  description: >
+    LLM agent that triages inbound support tickets, drafts replies, and
+    executes a bounded set of remediations (resend invoice, reset session,
+    issue refund) against production APIs.
+
+canonical_docs:
+  - README.md
+  - docs/ARCHITECTURE.md
+  - docs/THREAT_MODEL.md
+  - CLAUDE.md          # AI-facing instructions are canon: drift is auditable
+
+mandatory_lenses:
+  - turing
+  - oracle-boundary
+  - security-threat
+  - leveson
+  - mcconnell
+
+optional_lens_packs:
+  - ai-generated-code
+  - correctness
+
+critical_lenses:
+  - security-threat
+  - oracle-boundary
+  - leveson
+
+risk_assets:
+  - customer money (refund authority)
+  - customer PII in tickets
+  - support queue availability
+  - trust in automated replies
+
+evidence:
+  require_file_or_diff_reference: true
+  allow_observations_without_evidence: true
+  allow_findings_without_evidence: false
+
+severity_policy:
+  low_score_threshold: 6.0
+  critical_domain_threshold: 5.0
+  id_prefix: TPT
+
+named_categories:
+  - id: AUTO_REFUND_OVERREACH
+    default_severity: S0
+    description: >
+      The agent can move customer money without a deterministic validation
+      layer, per-ticket cap, or human approval step on the executing path.
+
+audit:
+  report_dir: docs/audits
+  cadence:
+    tactical: weekly
+    full_scale: every 6 weeks
+
+evidence_adapters:
+  - pytest
+  - ruff
+  - prompt-eval-suite
+  - github-actions

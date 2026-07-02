@@ -1,0 +1,11 @@
+invAIriant — evidence-based multi-lens architecture audits for AI-era codebases
+Copyright 2026 mindicator & silicon bags quartet
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Portions of this work generalize the audit and refactoring canon of the
+the origin project project (the audit types, the 0–10 lens scale, the score-to-severity
+mapping, the anti-averaging rules, and the network-persistence domain lens).
+Lens names (Cormen, Parnas, Turing, Lamport, Leveson, and others) are used as
+mnemonic devices for schools of engineering questioning and imply no
+endorsement by the individuals named.

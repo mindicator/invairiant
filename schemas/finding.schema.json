@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://invairiant.org/schemas/finding.schema.json",
+  "title": "invAIriant Finding",
+  "description": "A single audit finding. Core rule: no evidence, no finding — a finding with an empty or vague evidence list is invalid. Unsupported claims belong in the report's observations/hypotheses/open-questions sections, not here. S0/S1 findings require high or medium confidence.",
+  "type": "object",
+  "required": [
+    "id",
+    "severity",
+    "lens",
+    "claim",
+    "evidence",
+    "risk",
+    "recommendation",
+    "confidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*-[0-9]{3,}$",
+      "description": "Stable finding id, e.g. INV-001. The prefix is project-configurable (see invairiant.config.schema.json)."
+    },
+    "severity": {
+      "enum": ["S0", "S1", "S2", "S3", "NOTE"],
+      "description": "S0 blocks merge/release/phase transition; S1 must be fixed before the next major step; S2 next work cycle; S3 low; NOTE observation with no mandatory action."
+    },
+    "lens": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Lens id in kebab-case (e.g. 'parnas', 'oracle-boundary') or its display name ('Parnas')."
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Optional named finding category from the project's registry, e.g. SINGLE_POINT_OF_FAILURE, SILENT_DEGRADATION. Named categories carry a default severity."
+    },
+    "claim": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One falsifiable sentence stating the defect. Not a feeling, not a question."
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/evidence" },
+      "description": "Concrete, independently checkable evidence. At least one item is mandatory."
+    },
+    "risk": {
+      "type": "string",
+      "minLength": 10,
+      "description": "What concretely goes wrong if the finding is not addressed, and for whom."
+    },
+    "recommendation": {
+      "type": "string",
+      "minLength": 10,
+      "description": "The recommended fix or mitigation."
+    },
+    "confidence": {
+      "enum": ["high", "medium", "low"],
+      "description": "Low-confidence items must normally be recorded as observations, not findings."
+    },
+    "status": {
+      "enum": ["candidate", "verified", "rejected"],
+      "default": "candidate",
+      "description": "Pipeline status. Lens auditors emit candidates; only the evidence-verification step may set 'verified'; rejected candidates are kept in the report's Unsupported Hypotheses section."
+    },
+    "affected_components": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Layers, modules, or services affected."
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "verified_by": { "type": "string" },
+        "method": {
+          "type": "string",
+          "description": "How the evidence was checked: file read, command re-run, test executed, doc cross-read."
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "source": {
+      "enum": ["human", "ai", "hybrid"],
+      "description": "Who produced the finding. AI-proposed findings must pass evidence verification before counting."
+    },
+    "links": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Related findings, issues, ADRs, or incident reports."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "severity": { "enum": ["S0", "S1"] } },
+        "required": ["severity"]
+      },
+      "then": {
+        "properties": { "confidence": { "enum": ["high", "medium"] } }
+      }
+    }
+  ],
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "required": ["type"],
+      "description": "One independently checkable piece of evidence. 'Looks risky', 'probably overcomplicated', and 'AI may have generated this' are not evidence types.",
+      "properties": {
+        "type": {
+          "enum": [
+            "file_lines",
+            "diff_hunk",
+            "test_failure",
+            "missing_test",
+            "doc_code_contradiction",
+            "ci_output",
+            "runtime_log",
+            "incident",
+            "command_output",
+            "schema_config_mismatch"
+          ]
+        },
+        "file": { "type": "string", "description": "Repo-relative file path." },
+        "lines": {
+          "type": "string",
+          "pattern": "^[0-9]+(-[0-9]+)?$",
+          "description": "Line or line range, e.g. '120-148'."
+        },
+        "commit": { "type": "string", "description": "Commit hash the file/lines reference was taken at." },
+        "hunk": { "type": "string", "description": "The diff hunk text." },
+        "test": { "type": "string", "description": "Test identifier, e.g. package/file::test_name." },
+        "doc": { "type": "string", "description": "Doc path (+optional :lines) whose claim the code contradicts." },
+        "code": { "type": "string", "description": "Code path (+optional :lines) contradicting the doc." },
+        "description": { "type": "string", "description": "What is missing/mismatched and why it matters." },
+        "reference": { "type": "string", "description": "CI run URL/id, or incident report id/link." },
+        "command": { "type": "string", "description": "Reproducible command that was run." },
+        "output": { "type": "string", "description": "Relevant command output excerpt." },
+        "excerpt": { "type": "string", "description": "Relevant log/output excerpt." },
+        "source": { "type": "string", "description": "Log source (service, host, file)." },
+        "schema": { "type": "string", "description": "Schema path/ref in a schema/config mismatch." },
+        "config": { "type": "string", "description": "Config path/ref in a schema/config mismatch." }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "file_lines" } } }, "then": { "required": ["file", "lines"] } },
+        { "if": { "properties": { "type": { "const": "diff_hunk" } } }, "then": { "required": ["hunk"] } },
+        { "if": { "properties": { "type": { "const": "test_failure" } } }, "then": { "required": ["test"] } },
+        { "if": { "properties": { "type": { "const": "missing_test" } } }, "then": { "required": ["description"] } },
+        { "if": { "properties": { "type": { "const": "doc_code_contradiction" } } }, "then": { "required": ["doc", "code", "description"] } },
+        { "if": { "properties": { "type": { "const": "ci_output" } } }, "then": { "required": ["reference"] } },
+        { "if": { "properties": { "type": { "const": "runtime_log" } } }, "then": { "required": ["excerpt"] } },
+        { "if": { "properties": { "type": { "const": "incident" } } }, "then": { "required": ["reference"] } },
+        { "if": { "properties": { "type": { "const": "command_output" } } }, "then": { "required": ["command", "output"] } },
+        { "if": { "properties": { "type": { "const": "schema_config_mismatch" } } }, "then": { "required": ["description"] } }
+      ]
+    }
+  }
+}

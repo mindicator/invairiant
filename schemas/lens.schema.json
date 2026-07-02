@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://invairiant.org/schemas/lens.schema.json",
+  "title": "invAIriant Lens Descriptor",
+  "description": "Machine-readable descriptor of an audit lens. The markdown lens file remains the canonical human definition; this descriptor exists so tools and agents can select, list, and enforce lenses.",
+  "type": "object",
+  "required": ["id", "name", "pack", "short_description", "purpose"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "description": "Kebab-case lens id, e.g. 'parnas', 'oracle-boundary', 'von-neumann'."
+    },
+    "name": { "type": "string", "description": "Display name, e.g. 'Parnas Lens'." },
+    "pack": {
+      "type": "string",
+      "description": "Owning pack. Standard packs: core, systems, implementation, correctness, security-safety, ai-generated-code, domain. Custom packs are allowed."
+    },
+    "short_description": { "type": "string" },
+    "purpose": { "type": "string", "description": "What this lens protects against." },
+    "focus": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The properties this lens examines."
+    },
+    "core_questions": { "type": "array", "items": { "type": "string" } },
+    "red_flags": { "type": "array", "items": { "type": "string" } },
+    "good_state_examples": { "type": "array", "items": { "type": "string" } },
+    "required_evidence_types": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "file_lines",
+          "diff_hunk",
+          "test_failure",
+          "missing_test",
+          "doc_code_contradiction",
+          "ci_output",
+          "runtime_log",
+          "incident",
+          "command_output",
+          "schema_config_mismatch"
+        ]
+      },
+      "description": "Evidence types typical for this lens. Findings may use any valid type; this list guides auditors."
+    },
+    "mandatory_by_default": {
+      "type": "boolean",
+      "default": false,
+      "description": "True for lenses every audit should include unless the config opts out (e.g. security-threat, mcconnell)."
+    },
+    "critical_domain": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if the lens is subject to the stricter critical-domain severity threshold (security, safety, privacy, and domain lenses tied to the project's core risk)."
+    },
+    "cross_listed_in": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Other packs this lens is cross-listed into (reference stubs, not forks)."
+    },
+    "file": { "type": "string", "description": "Repo-relative path to the canonical markdown lens file." },
+    "applies_to": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Project types this lens fits, e.g. ['infra-service', 'ai-agent-system']."
+    }
+  }
+}

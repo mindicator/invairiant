@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://invairiant.org/schemas/invairiant.config.schema.json",
+  "title": "invairiant.config.yml",
+  "description": "Per-project configuration for invAIriant audits. Defaults implement the protocol's hard rules; note that allow_findings_without_evidence cannot be set to true — that would not be an invAIriant audit.",
+  "type": "object",
+  "required": ["project"],
+  "additionalProperties": false,
+  "properties": {
+    "project": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "description": "Free-form project type used for lens selection guidance. Common values: minimal-webapp, product-saas, infra-service, data-platform, ai-agent-system, distributed-system, p2p-network, embedded."
+        },
+        "description": { "type": "string" }
+      }
+    },
+    "canonical_docs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Docs treated as canon for doc/code-contradiction evidence: README, ARCHITECTURE, THREAT_MODEL, ADRs. Divergence between these and code is auditable drift."
+    },
+    "mandatory_lenses": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" },
+      "description": "Lens ids scored in every full-scale audit of this project. Keep to 4-6; a small default set beats a tribunal.",
+      "uniqueItems": true
+    },
+    "optional_lens_packs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Packs available for event-triggered or deep audits: systems, implementation, correctness, security-safety, ai-generated-code, domain packs.",
+      "uniqueItems": true
+    },
+    "critical_lenses": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Lenses subject to the stricter critical-domain threshold (default: security-threat, privacy-knowledge-minimization, plus any domain lens guarding the project's core risk).",
+      "uniqueItems": true
+    },
+    "risk_assets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What the project must protect, e.g. credentials, user data, availability, operator safety. Severity classification references these."
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "require_file_or_diff_reference": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true, every finding needs at least one file_lines or diff_hunk item unless its evidence is a test failure, CI run, log, or incident."
+        },
+        "allow_observations_without_evidence": { "type": "boolean", "default": true },
+        "allow_findings_without_evidence": {
+          "const": false,
+          "default": false,
+          "description": "Hard rule: no evidence, no finding. This key exists only to make the rule visible in every config."
+        }
+      }
+    },
+    "severity_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "low_score_threshold": {
+          "type": "number",
+          "default": 6.0,
+          "description": "Mandatory-lens score below this produces a finding of at least S2."
+        },
+        "critical_domain_threshold": {
+          "type": "number",
+          "default": 5.0,
+          "description": "Score below this on a critical lens, tied to a concrete user/operational risk, produces S0 unless explicitly justified otherwise."
+        },
+        "id_prefix": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*$",
+          "default": "INV",
+          "description": "Finding id prefix, e.g. INV -> INV-001."
+        }
+      }
+    },
+    "named_categories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "default_severity", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "default_severity": { "enum": ["S0", "S1", "S2", "S3", "NOTE"] },
+          "description": { "type": "string" },
+          "escalates_to": { "enum": ["S0", "S1", "S2"], "description": "Severity when the stated escalation condition holds." },
+          "escalation_condition": { "type": "string" }
+        }
+      },
+      "description": "Project-specific named finding categories extending the generic registry in docs/severity-model.md."
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "report_dir": { "type": "string", "default": "docs/audits" },
+        "cadence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tactical": { "type": "string", "description": "e.g. 'weekly', 'biweekly'." },
+            "full_scale": { "type": "string", "description": "e.g. 'every 6-8 weeks', 'quarterly'." }
+          }
+        }
+      }
+    },
+    "evidence_adapters": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "External tools/skills whose outputs are ingested as evidence (never directly as findings): e.g. semgrep, codeql, security-review, code-review, tech-debt-tracker, pytest, ci."
+    }
+  }
+}

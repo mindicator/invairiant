@@ -1,0 +1,59 @@
+# invAIriant config — infra service example
+# Validates against ../../schemas/invairiant.config.schema.json
+# Fictional project: "conveyor", a multi-tenant job scheduler and artifact
+# distribution service (Go). Central infra: stricter set + systems pack.
+
+project:
+  name: conveyor
+  type: infra-service
+  description: >
+    Multi-tenant job scheduler: tenants submit jobs via API; workers execute;
+    results and signed artifacts are distributed to tenant endpoints.
+
+canonical_docs:
+  - README.md
+  - docs/ARCHITECTURE.md
+  - docs/THREAT_MODEL.md
+  - docs/adr/
+
+mandatory_lenses:
+  - security-threat
+  - parnas
+  - mcconnell
+  - turing
+
+optional_lens_packs:
+  - systems
+  - ai-generated-code
+
+critical_lenses:
+  - security-threat
+  - operational-resilience
+
+risk_assets:
+  - tenant credentials
+  - tenant job payloads
+  - availability
+  - operator safety
+
+evidence:
+  require_file_or_diff_reference: true
+  allow_observations_without_evidence: true
+  allow_findings_without_evidence: false
+
+severity_policy:
+  low_score_threshold: 6.0
+  critical_domain_threshold: 5.0
+  id_prefix: CNV
+
+audit:
+  report_dir: docs/audits
+  cadence:
+    tactical: biweekly
+    full_scale: every 6-8 weeks
+
+evidence_adapters:
+  - go-test
+  - golangci-lint
+  - semgrep
+  - github-actions
