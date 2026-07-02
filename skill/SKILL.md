@@ -112,9 +112,11 @@ Scope = the diff + its blast radius. Runbook:
    .invairiant/cache/bundle.json` → feed it to the lens passes as input.
 3. **Pipeline** stages 1 (lens passes) → 2 (verify) → 3 (classify) →
    4 (synthesize), against the PR checklist in `templates/pr-comment.md`.
-4. **Deliverable:** a PR comment following `templates/pr-comment.md` — verdict
-   (`pass` / `pass_with_conditions` / `fail`), verified findings with cited
-   evidence, conditions, observations/hypotheses kept separate.
+4. **Deliverable:** a PR comment — synthesize the report, then render it with
+   `invairiant render-comment <report.json>` (the `templates/pr-comment.md`
+   shape): verdict (`pass` / `pass_with_conditions` / `fail`), verified
+   findings with cited evidence, conditions, observations/hypotheses kept
+   separate. Paste it into the PR (the CLI does not post).
 
 Do not merge/approve anything — present the gate.
 
@@ -168,6 +170,7 @@ judgment (`docs/cli.md`):
   pointers only);
 - `invairiant validate-config` / `validate-report` — schema-check inputs/outputs;
 - `invairiant render-report` — deterministic JSON→Markdown;
+- `invairiant render-comment` — deterministic report→PR-comment;
 - `invairiant ci-gate` — exit non-zero on open S0/S1.
 
 The CLI never runs a lens, produces a finding, or assigns a score. All

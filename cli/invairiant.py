@@ -557,6 +557,81 @@ def cmd_render_report(args) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# render-comment  (deterministic PR-comment render; no judgment)
+# --------------------------------------------------------------------------- #
+_SEV_ORDER = {"S0": 0, "S1": 1, "S2": 2, "S3": 3, "NOTE": 4}
+
+
+def _ev_short(e: dict) -> str:
+    t = e.get("type", "")
+    if e.get("file"):
+        return f"`{e['file']}:{e.get('lines', '')}`"
+    if t == "doc_code_contradiction":
+        return f"{e.get('doc', '')} vs {e.get('code', '')}"
+    if t == "diff_hunk":
+        return "diff hunk"
+    if t == "test_failure":
+        return e.get("test", "test")
+    if t == "command_output":
+        return f"`{e.get('command', '')}`"
+    if t in ("ci_output", "incident"):
+        return e.get("reference", "")
+    return e.get("description", t)
+
+
+def cmd_render_comment(args) -> int:
+    data = json.loads(Path(args.report).read_text(encoding="utf-8"))
+    summary = data.get("summary", {})
+    lenses = ", ".join(dict.fromkeys(s.get("lens", "") for s in data.get("lens_scores", [])))
+    proj = data.get("project", {})
+    audited = proj.get("commit_range") or proj.get("branch") or (data.get("scope", "")[:60])
+    title = data.get("title", "")
+    header = title if "pr audit" in title.lower() else f"invAIriant PR Audit — {title}"
+    L = [f"# {header}", ""]
+    L.append(f"**Verdict:** {summary.get('verdict', '')}")
+    L.append(f"**Audited:** {audited} · **Lenses:** {lenses}")
+    L.append("")
+    findings = [f for f in data.get("findings", []) if f.get("status") != "rejected"]
+    findings.sort(key=lambda f: _SEV_ORDER.get(f.get("severity"), 9))
+    if findings:
+        L += ["## Findings", ""]
+        for f in findings:
+            ev = f.get("evidence", [])
+            L.append(f"**{f.get('id', '?')} ({f.get('severity')}, {f.get('lens', '?')}, "
+                     f"confidence {f.get('confidence', '?')})** — {f.get('claim', '')}")
+            if ev:
+                L.append(f"- Evidence: {_ev_short(ev[0])}"
+                         + (f" — {ev[0].get('description')}" if ev[0].get("description") else ""))
+            L.append(f"- Risk: {f.get('risk', '')}")
+            L.append(f"- Fix: {f.get('recommendation', '')}")
+            L.append("")
+    conditions = [a for a in summary.get("required_actions", []) if a.get("blocking")]
+    if conditions:
+        L += ["## Conditions", ""]
+        for i, a in enumerate(conditions, 1):
+            who = f" ({a['owner']})" if a.get("owner") else ""
+            L.append(f"{i}. {a.get('action', '')}{who}")
+        L.append("")
+    obs = data.get("observations", [])
+    hyp = data.get("hypotheses", [])
+    if obs or hyp:
+        L += ["## Observations / Hypotheses (non-blocking)", ""]
+        for o in obs:
+            L.append(f"- {o.get('text', '')}")
+        for h in hyp:
+            reason = h.get("rejected_reason") or h.get("follow_up") or ""
+            L.append(f"- Rejected hypothesis: {h.get('text', '')}" + (f" — {reason}" if reason else ""))
+        L.append("")
+    payload = "\n".join(L)
+    if args.out:
+        Path(args.out).write_text(payload + "\n", encoding="utf-8")
+        print(f"rendered PR comment: {args.report} -> {args.out}")
+    else:
+        print(payload)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # ci-gate  (the seatbelt: fail on open S0/S1)
 # --------------------------------------------------------------------------- #
 def cmd_ci_gate(args) -> int:
@@ -617,6 +692,11 @@ def main(argv=None) -> int:
     prr.add_argument("report")
     prr.add_argument("--out", default=None)
     prr.set_defaults(func=cmd_render_report)
+
+    prc = sub.add_parser("render-comment", help="render a report JSON into a paste-ready PR comment")
+    prc.add_argument("report")
+    prc.add_argument("--out", default=None)
+    prc.set_defaults(func=cmd_render_comment)
 
     pg = sub.add_parser("ci-gate", help="exit non-zero on open S0/S1 findings")
     pg.add_argument("report")

@@ -42,6 +42,12 @@ jobs:
           fi
           echo "ci-gate correctly failed on open S0/S1"
 
+      - name: CLI smoke test (render-comment -> paste-ready PR comment)
+        run: |
+          out=$(python3 cli/invairiant.py render-comment docs/audits/2026-07-03-self-audit.json)
+          echo "$out" | grep -q '\*\*Verdict:\*\*' || { echo "render-comment missing verdict"; exit 1; }
+          echo "render-comment OK"
+
       - name: CLI smoke test (collect -> valid evidence bundle)
         run: |
           mkdir -p .invairiant/cache

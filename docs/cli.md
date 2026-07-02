@@ -92,6 +92,15 @@ Deterministically render a report JSON to Markdown in the shape of
 summary + verdict, lens-score table, findings by severity, and the kept
 Unsupported Hypotheses. Formatting only — no content is added or judged.
 
+### `invairiant render-comment <report.json> [--out F]`
+Render a report JSON into a paste-ready **PR comment**
+([`templates/pr-comment.md`](../templates/pr-comment.md) shape): verdict,
+audited range, lenses, verified findings (severity-sorted, each with a
+one-line evidence locator, risk, and fix), blocking conditions, and
+observations/rejected-hypotheses. This is the deliverable of
+`/invairiant audit-pr`. Deterministic formatting only — no posting, no
+judgment.
+
 ### `invairiant ci-gate <report.json> [--max-severity S0|S1]`
 The seatbelt. Exit non-zero when the report has open blocking findings — by
 default any `S0` or `S1` whose `status` is not `rejected`; `--max-severity S0`

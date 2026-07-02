@@ -41,6 +41,10 @@ follows Keep a Changelog; versions track the protocol, not any tooling.
   `p2p-network-transport-change`). Each carries the diff, selected lenses,
   candidate/rejected/verified findings, a schema-valid report, and a
   side-by-side of **what a normal AI reviewer missed**.
+- **`invairiant render-comment`**: deterministically renders a report JSON into
+  a paste-ready PR comment (`templates/pr-comment.md` shape) — verdict, lenses,
+  severity-sorted findings with evidence, conditions, and kept hypotheses. The
+  deliverable of `/invairiant audit-pr`. No posting, no judgment.
 
 ### Fixed
 
