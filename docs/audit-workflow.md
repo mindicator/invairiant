@@ -139,10 +139,17 @@ Two special modes inherited from the origin canon, generalized:
   skills, dependency auditors, and test runs feed stage 1–2 as candidate
   evidence; their raw output lands in the evidence appendix
   ([evidence-rules.md §7](evidence-rules.md)).
-- **Agent-skill mode.** If the repo has the invAIriant skill installed
-  (see [`skill/SKILL.md`](../skill/SKILL.md)), `/invairiant` orchestrates
-  this whole workflow: config discovery → lens selection → staged pipeline →
-  report, with humans approving gates.
+- **Agent-skill mode (primary).** If the repo has the invAIriant skill
+  installed (see [`skill/SKILL.md`](../skill/SKILL.md)), the commands
+  `/invairiant audit-pr` and `/invairiant full-audit` orchestrate this whole
+  workflow — config discovery → lens selection → staged pipeline → report —
+  and `verify-findings` / `classify-severity` / `synthesize-report` run
+  individual stages. Humans approve gates.
+- **The CLI is infrastructure, not judgment.** The agent may shell out to
+  `invairiant validate-config`, `collect-evidence`, `validate-report`,
+  `render-report`, and `ci-gate` ([cli.md](cli.md)) — but the CLI never runs a
+  lens, produces a finding, or assigns a score. All judgment stays in the
+  agent under the prompt pack.
 - Humans own: lens selection, gate decisions, severity overrides (written
   justification), and anything the config marks as blocking.
 

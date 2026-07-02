@@ -29,3 +29,15 @@ jobs:
 
       - name: Run framework self-validation
         run: python3 scripts/validate_framework.py
+
+      - name: CLI smoke test (validate-config / validate-report)
+        run: |
+          python3 cli/invairiant.py validate-config examples/*/invairiant.config.yml
+          python3 cli/invairiant.py validate-report examples/infra-service/example-report.json
+
+      - name: CLI smoke test (ci-gate must FAIL on the S0 example)
+        run: |
+          if python3 cli/invairiant.py ci-gate examples/infra-service/example-report.json; then
+            echo "ci-gate should have failed on an S0 report"; exit 1
+          fi
+          echo "ci-gate correctly failed on open S0/S1"

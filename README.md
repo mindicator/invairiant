@@ -44,34 +44,34 @@ one rule that keeps it honest:
 
 ## Quick start
 
-Pick the mode that fits — the protocol works with zero tooling; the skill
-automates it; the schemas are the contract for future product tooling.
-
-**As a protocol (no tooling):**
+**The primary way is the agent skill.** Install it, then drive the audit with
+commands:
 
 ```bash
-# 1. Copy the closest starter config to your repo root
-cp examples/infra-service/invairiant.config.yml ./invairiant.config.yml
-#    (also: examples/minimal-webapp, examples/ai-agent-system)
-
-# 2. Run your next PR audit from the checklist + <=2 focused lenses
-#    -> templates/pr-comment.md
-
-# 3. Run your first full-scale audit
-#    -> docs/audit-workflow.md  (uses each lens file's Prompt Block)
-#    -> templates/audit-report.md  (the output)
-```
-
-**As an agent skill (Claude Code / compatible):**
-
-```bash
-# Install as a project skill, then let the agent drive the whole pipeline
+# Install as a project skill (Claude Code / compatible agents)
 mkdir -p .claude/skills && ln -s "$PWD/skill" .claude/skills/invairiant
-#   in the agent:  /invairiant   ->  config discovery, lens selection,
-#   lens passes, evidence verification, severity, and a written report
+
+#   in the agent:
+#   /invairiant audit-pr            # PR-scoped: checklist + <=2 focused lenses
+#   /invairiant full-audit          # full-scale: all mandatory lenses -> report
+#   /invairiant verify-findings ... # stage 2 only: adversarially verify candidates
+#   /invairiant classify-severity . # stage 3 only
+#   /invairiant synthesize-report . # stage 4 only
 ```
 
-See a full worked example: [`examples/infra-service/example-audit.md`](examples/infra-service/example-audit.md).
+**The CLI is the seatbelt around it** (it never audits — no lenses, no
+findings, no scores):
+
+```bash
+python3 cli/invairiant.py init --type infra-service   # scaffold the config
+python3 cli/invairiant.py validate-config             # schema-check it
+python3 cli/invairiant.py ci-gate docs/audits/x.json  # fail CI on open S0/S1
+```
+
+**No tooling at all?** The protocol runs by hand: copy a config from
+[`examples/`](examples/), then follow [docs/audit-workflow.md](docs/audit-workflow.md)
+using each lens file's Prompt Block and [templates/](templates/). Worked
+example: [`examples/infra-service/example-audit.md`](examples/infra-service/example-audit.md).
 
 ## How it works — the four-stage pipeline
 
@@ -124,24 +124,28 @@ famous name — **default audits use 4–6 lenses, not 20.**
 > right because of its evidence, never because of the name on the lens. Full
 > taxonomy and per-project selection guide: [docs/lens-taxonomy.md](docs/lens-taxonomy.md).
 
-## Three ways to use it
+## What it is, in one layer diagram
 
-invAIriant is deliberately a **framework, an agent skill, and a product
-contract** at once — the same protocol at three levels of automation.
+invAIriant is an **audit discipline layer for AI-era software engineering** —
+not another CLI auditor. The market for those is full (Semgrep, CodeQL, Sonar,
+linters, dependency scanners); the fresh niche is a *protocol for AI-assisted
+architectural judgment*. So the product is the skill, and everything else
+supports it.
 
-| Mode | What it is | Status |
+| Layer | What it is | Status |
 |---|---|---|
-| **1 · Protocol** | Docs + lenses + templates + schemas. Humans and/or AI run the pipeline by hand. | ✅ usable now |
-| **2 · Agent skill** | [`/invairiant`](skill/SKILL.md) orchestrates config discovery → lens passes → verification → severity → report. Existing skills/tools attach as evidence adapters. | ✅ usable now |
-| **3 · Product** | `invairiant validate` / `report` / a CI gate that fails on open S0/S1, built on the JSON [schemas](schemas/). | 🚧 roadmap |
+| **① Primary — the agent skill** | [`/invairiant`](skill/SKILL.md): an LLM coding agent runs the audit. Commands: `audit-pr`, `full-audit`, `verify-findings`, `classify-severity`, `synthesize-report`. **This is the product.** | ✅ usable now |
+| **② Secondary — the protocol layer** | [schemas](schemas/) + [templates](templates/) + [prompt pack](prompts/) + [lenses](lenses/) — the reusable contract the skill (or a human) stands on. | ✅ usable now |
+| **③ Helper — a narrow CLI** | [`invairiant`](docs/cli.md): `init`, `validate-config`, `validate-report`, `collect-evidence`, `render-report`, `ci-gate`. **It serves the audit; it never performs one** — no lenses, no findings, no scores. | ✅ reference impl |
 
 **Does it pull in other skills?** Yes — by design it *orchestrates* rather
 than *reinvents*. Security scanners, code-review skills, dependency auditors,
-and test runners are **evidence adapters**: invAIriant runs them, ingests
-their output as candidate evidence, and subjects it to the same verification
-as any human claim. It is the connective protocol that binds evidence,
-lenses, severity, and AI-assisted review into one auditable trail — not a
-replacement for the tools it consumes.
+and test runners are **evidence adapters**: the skill (often via
+`invairiant collect-evidence`) runs them, ingests their output as candidate
+evidence, and subjects it to the same verification as any human claim. It is
+the connective protocol that binds evidence, lenses, severity, and
+AI-assisted review into one auditable trail — not a replacement for the tools
+it consumes.
 
 ## Evidence rules, in one screen
 
@@ -175,15 +179,16 @@ a critical finding.** Full model: [docs/severity-model.md](docs/severity-model.m
 
 ```text
 README.md                this file
+skill/                   ① the /invairiant agent skill — the primary product
 docs/                    methodology · evidence-rules · severity-model ·
-                         audit-workflow · lens-taxonomy · related-work
+                         audit-workflow · lens-taxonomy · cli · related-work
 lenses/                  the lens library (7 packs, 28 lenses)
 templates/               audit-report · finding · pr-comment ·
                          phase-transition-audit · event-triggered-audit
 schemas/                 finding · audit-report · lens · config  (JSON Schema)
 prompts/                 lens-auditor · evidence-verifier ·
                          severity-classifier · report-synthesizer
-skill/                   the /invairiant agent-skill packaging
+cli/                     ③ the narrow invairiant CLI (serves the audit)
 examples/                minimal-webapp · infra-service · ai-agent-system
 .github/workflows/       framework self-validation
 ```

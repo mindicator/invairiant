@@ -3,6 +3,27 @@
 All notable changes to invAIriant are documented here. The format loosely
 follows Keep a Changelog; versions track the protocol, not any tooling.
 
+## [Unreleased]
+
+### Changed — positioning
+
+- Reframed the project as an **audit discipline layer for AI-era software
+  engineering**, not another CLI auditor. The **agent skill is the primary
+  product**; schemas + templates + prompt pack are the secondary layer; the
+  CLI is a narrow helper that serves the audit and never performs one.
+
+### Added
+
+- **Skill commands** (`skill/SKILL.md`): `audit-pr`, `full-audit`,
+  `verify-findings`, `classify-severity`, `synthesize-report` — end-to-end
+  audits plus individual pipeline stages.
+- **CLI** (`cli/invairiant.py`, spec in `docs/cli.md`): `init`,
+  `validate-config`, `validate-report`, `collect-evidence`, `render-report`,
+  `ci-gate` — deterministic infrastructure only (no lenses, findings, or
+  scores). `ci-gate` exits non-zero on open S0/S1.
+- **Machine-readable example report** (`examples/infra-service/example-report.json`)
+  validating against the audit-report schema; CI now smoke-tests the CLI.
+
 ## [0.1.0] — 2026-07-02
 
 Initial public draft. Extracted and generalized from the the origin project audit and

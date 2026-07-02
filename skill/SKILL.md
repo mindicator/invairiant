@@ -1,12 +1,25 @@
 ---
 name: invairiant
-description: Run an evidence-based, multi-lens architecture audit (invAIriant protocol) on a repo, diff, or PR. Use when the user asks for an architecture audit, invariant audit, lens audit, evidence-based review, PR audit, phase-transition/readiness audit, post-incident audit, or invokes /invairiant. Produces a scored, severity-classified audit report where every finding cites concrete evidence — no evidence, no finding.
+description: >
+  invAIriant — an evidence-based, multi-lens architecture-audit protocol for
+  LLM coding agents. This skill IS the product: it runs the audit. Commands:
+  audit-pr, full-audit, verify-findings, classify-severity, synthesize-report.
+  Use when the user asks for an architecture / invariant / lens audit, an
+  evidence-based review, a PR audit, a phase-transition or post-incident audit,
+  to verify candidate findings, classify severity, or synthesize an audit
+  report — or when they type `/invairiant ...`. Every finding must cite
+  concrete evidence: no evidence, no finding.
 ---
 
 # invAIriant — evidence-based multi-lens architecture audit
 
-You are orchestrating an invAIriant audit. The protocol's non-negotiable
-rules, which you enforce at every step and repeat to every subagent:
+This skill is the **primary product**: the audit discipline itself, run by an
+LLM coding agent. The schemas, templates, and prompt pack are the layer it
+stands on; the `invairiant` CLI is only infrastructure around it (validate,
+collect evidence, render, gate) and never performs the audit.
+
+The protocol's non-negotiable rules — enforce them at every step and repeat
+them to every sub-agent you spawn:
 
 ```text
 No evidence, no finding.
@@ -15,129 +28,129 @@ Separate observation from verified finding.
 Do not produce confident claims from vibes.
 ```
 
-## Step 0 — Locate the framework
+## Commands
 
-Find the invAIriant framework root (the directory containing `lenses/`,
-`prompts/`, `schemas/`, `templates/`, `docs/`). Check in order:
+Parse the first token of the invocation as the command. Default (no token) →
+`full-audit` for a repo, `audit-pr` when a diff/PR is in scope.
 
-1. `$INVAIRIANT_HOME` if set;
-2. this skill's own parent directory (when the skill ships inside the
-   framework repo);
-3. `./invairiant/` or `./docs/invairiant/` in the target repo;
-4. `~/.invairiant/`.
+| Command | Does | Pipeline stages |
+|---|---|---|
+| `audit-pr [<pr#\|range>]` | Audit a PR/diff: checklist + ≤2 focused lenses | 1→2→3→4, PR-comment output |
+| `full-audit [<range>]` | Full-scale audit: all mandatory lenses | 1→2→3→4, full report |
+| `verify-findings <candidates>` | Adversarially verify candidate findings only | stage 2 |
+| `classify-severity <verified>` | Map verified findings to severity only | stage 3 |
+| `synthesize-report <inputs>` | Assemble the final report only | stage 4 |
 
-If not found, tell the user where to get it and run **degraded mode**
-(§ Degraded mode) rather than inventing lens content.
+The four stages and their prompts:
 
-## Step 1 — Scope, config, audit type
+```text
+[1] lens pass          prompts/lens-auditor.md        (one lens per pass)
+[2] evidence verify    prompts/evidence-verifier.md   (adversarial: refute)
+[3] severity classify  prompts/severity-classifier.md (rules, not averages)
+[4] synthesize         prompts/report-synthesizer.md  (rejected items kept)
+```
 
-1. Read `invairiant.config.yml` at the target repo root. If absent, offer a
-   60-second setup: infer `project.type` from the repo, propose 4–6
-   mandatory lenses from the selection table in `docs/lens-taxonomy.md`,
-   ask the user to confirm risk assets and canonical docs, write the config
-   (validate against `schemas/invairiant.config.schema.json`).
-2. Determine audit type from the request: a PR/diff → **pr**; "audit the
-   system / full audit" → **full-scale**; an incident or event →
-   **event-triggered** (template `templates/event-triggered-audit.md`);
-   a release/phase gate → **phase-transition**
-   (`templates/phase-transition-audit.md`); "verify the fixes" →
-   **closure-verification**.
-3. Pin the commit/range being audited and state scope explicitly (what is
-   in, what is out).
-4. Select lenses: mandatory lenses from config, plus at most the packs the
-   change/risk surface justifies. **Anti-overengineering is canon:** a
-   small PR gets the checklist plus ≤2 focused lenses; default full-scale
-   audits use 4–6 lenses, not 20.
+Stage boundaries are load-bearing: stage 1 never assigns final severity;
+stage 2 never invents findings; stage 3 touches only verified findings;
+stage 4 never drops a rejected hypothesis.
 
-## Step 2 — Gather evidence inputs (evidence adapters)
+## Step 0 — locate the framework
 
-Before any lens pass, collect cheap deterministic evidence so auditors cite
-facts, not impressions:
+Find the framework root (dir containing `lenses/`, `prompts/`, `schemas/`,
+`templates/`, `docs/`, `cli/`): `$INVAIRIANT_HOME`, then this skill's parent,
+then `./invairiant/` or `./docs/invairiant/`, then `~/.invairiant/`. If not
+found, run **degraded mode** (below) rather than inventing lens content.
 
-- run the test suite and linters if available; capture failures;
-- check CI status for the range if accessible;
-- if security/code-review skills or scanners are available (e.g.
-  `/security-review`, `/code-review`, semgrep), run the relevant ones and
-  **treat their output as candidate evidence, never as findings** — each
-  claim they make must still pass verification;
-- collect the canonical docs named in the config for contradiction checks.
+## Shared setup (all audit commands)
 
-Store raw outputs for the report's Evidence Appendix.
+1. **Config.** Read `invairiant.config.yml`. If absent, offer
+   `invairiant init --type <inferred>` (or write one after confirming project
+   type, canonical docs, risk assets, and 4–6 mandatory lenses via
+   `docs/lens-taxonomy.md`). Validate it: `invairiant validate-config`.
+2. **Scope.** Pin the commit/range; state what is in and out of scope.
+3. **Lens selection.** Mandatory lenses from config, plus at most the packs the
+   change/risk surface justifies. Anti-overengineering is canon: a small PR
+   gets the checklist + ≤2 lenses; default full audits use 4–6, not 20.
+4. **Evidence gathering.** Run `invairiant collect-evidence` (and any project
+   test/lint/scan). Treat every tool's output as **candidate evidence, never a
+   finding** — it still passes stage 2.
 
-## Step 3 — Run the pipeline
+## Command procedures
 
-Run the four stages with strict boundaries. Use subagents where available
-(one lens per subagent, in parallel; a **different** agent for
-verification). If subagents are unavailable, run the stages sequentially
-yourself — but never skip stage 2, and never let stage 1's author-view
-survive unverified into the report.
+### `audit-pr`
+Scope = the diff + its blast radius. Run the PR checklist
+(`templates/pr-comment.md`) and ≤2 lenses chosen by the diff's risk surface
+(new agent loop → `turing`/`oracle-boundary`; new endpoint →
+`security-threat`). Run stages 1→4. Output the PR-comment verdict
+(`pass` / `pass_with_conditions` / `fail`) with verified findings, unsupported
+hypotheses kept separate. Do not merge/approve anything — present the gate.
 
-1. **Lens passes** — for each selected lens, use the lens file's
-   `## Prompt Block` (or `prompts/lens-auditor.md` + the lens file). Each
-   pass returns: a 0–10 score block with evidence-referencing
-   justification, candidate findings (JSON per
-   `schemas/finding.schema.json`, `status: candidate`, provisional
-   severity), and clearly separated observations/hypotheses/open questions.
-2. **Evidence verification** — apply `prompts/evidence-verifier.md` to
-   every candidate: open the cited lines, re-run commands, search for
-   "missing" tests before agreeing, read both sides of contradictions.
-   Verdicts: verified / rejected (with reason) / demoted to observation.
-   Nothing is dropped.
-3. **Severity classification** — apply `prompts/severity-classifier.md`
-   with the config's `severity_policy`, `risk_assets`, named categories,
-   and `docs/severity-model.md`: named-category defaults, score→severity
-   floors (mandatory lens <6.0 → ≥S2; <5.0 with concrete architectural
-   risk → ≥S1; critical lens <5.0 with user/operational risk → S0),
-   confidence constraints (S0/S1 require high/medium), one-line written
-   justification per severity.
-4. **Synthesis** — apply `prompts/report-synthesizer.md` to fill
-   `templates/audit-report.md` (or the audit-type template): lens score
-   table, findings by severity, notes/observations, **Unsupported
-   Hypotheses kept visible with rejection reasons**, strongest/weakest
-   lens, required actions with owners, evidence appendix. Verdict derives
-   from open findings: any S0 → fail; any S1 → at best
-   pass_with_conditions; never from score averages.
+### `full-audit`
+Scope = whole system at a pinned commit. Assign roles
+(`docs/methodology.md` §5). Run one stage-1 pass **per selected lens** using
+each lens file's Prompt Block (sub-agents may run passes in parallel; a human
+or a second agent spot-checks). Then stages 2→4. Fill
+`templates/audit-report.md`: lens-score table, findings by severity,
+observations, **Unsupported Hypotheses (kept)**, strongest/weakest lens,
+required actions with owners, evidence appendix. Every audit produces
+decisions; an audit without decisions does not count. Validate the result:
+`invairiant validate-report`. File it in the config's report dir.
 
-## Step 4 — Deliver and gate
+### `verify-findings`
+Input: candidate findings (JSON per `schemas/finding.schema.json`, or prose).
+Apply `prompts/evidence-verifier.md` with repo access: open cited lines,
+re-run commands, search for "missing" tests before agreeing, read both sides
+of contradictions. Emit each as `verified` / `rejected` (with reason) /
+`demoted` to observation. Invent nothing; drop nothing.
 
-- Write the report to the config's report dir (default `docs/audits/`,
-  fall back to the working directory), named
-  `YYYY-MM-DD-<type>-<slug>.md`.
-- Tell the user: the verdict, open S0/S1 findings with their evidence, the
-  weakest lens and why, and the required actions. Lead with the outcome.
-- Humans own gates: never merge/approve/close anything yourself on the
-  basis of the audit; present the gate implication and stop.
-- If the user asks to fix findings, that is new work after the audit —
-  keep the report as the record of what was found first.
+### `classify-severity`
+Input: verified findings. Apply `prompts/severity-classifier.md` with the
+config's `severity_policy`, `risk_assets`, named categories, and
+`docs/severity-model.md`: named-category defaults, score→severity floors,
+confidence constraints (S0/S1 require high/medium), one-line justification per
+severity. Never lower a severity because the average is good.
+
+### `synthesize-report`
+Input: scored findings + observations/hypotheses + metadata. Apply
+`prompts/report-synthesizer.md` to fill the report template. Verdict derives
+from open findings (any S0 → fail; any S1 → at best pass_with_conditions),
+never from score averages. Optionally render with `invairiant render-report`.
+
+## The CLI is a seatbelt, not an auditor
+
+Use the `invairiant` CLI for deterministic infrastructure only — never for
+judgment (`docs/cli.md`):
+
+- `invairiant init` — scaffold a config;
+- `invairiant validate-config` / `validate-report` — schema-check inputs/outputs;
+- `invairiant collect-evidence` — run declared adapters, normalize their raw
+  output into candidate evidence;
+- `invairiant render-report` — deterministic JSON→Markdown;
+- `invairiant ci-gate` — exit non-zero on open S0/S1.
+
+The CLI never runs a lens, produces a finding, or assigns a score. All
+architectural judgment lives here, in the agent, under these prompts.
+
+## Humans own the gates
+
+Never merge, approve, close, or release on the basis of an audit. Present the
+verdict and the gate implication, then stop. Applying fixes is separate work
+after the audit; keep the report as the record of what was found.
 
 ## Degraded mode (framework files unavailable)
 
-State clearly that the full lens library is not installed, then audit with
-only these four generic lenses, all other rules unchanged:
+State that the full lens library is not installed, then audit with four
+generic lenses — `parnas`, `mcconnell`, `security-threat`, `turing` — scoring
+each 0–10, applying the same evidence rules, severity floors (S0 blocks; S1
+before next major step; S2 next cycle), and report structure, keeping
+observations separate from findings.
 
-- **parnas** — do modules read each other's internals past declared
-  interfaces; can implementations be replaced; is any registry/config
-  service accumulating knowledge beyond its contract?
-- **mcconnell** — are changes localized and documented; do code and
-  canonical docs diverge; do tests accompany changes; is there rollback
-  for high-blast-radius changes?
-- **security-threat** — does code cover the threat model's attack rows;
-  new surfaces recorded; secrets out of code/logs/telemetry; authn/authz
-  on new endpoints; no silent path bypassing the security model?
-- **turing** — does every loop/retry have an enforced bound; is
-  model/heuristic output validated before touching state; are
-  model-mediated decisions replayable; is there a deterministic fallback
-  for uncertainty?
-
-Score each 0–10, apply the same evidence rules, severity floors, and
-report structure (embed the severity table: S0 blocks, S1 before next
-major step, S2 next cycle, S3 low, NOTE no action).
-
-## Failure modes to refuse
+## Refuse these failure modes
 
 - A finding without concrete evidence — demote it, whoever proposed it.
 - "The average is high, so the S1 is fine" — never.
 - Deleting a rejected hypothesis — it goes to Unsupported Hypotheses.
 - Running 15 lenses on a 40-line PR — the protocol forbids tribunals.
-- Letting a scanner's or reviewer-skill's output become findings without
-  verification — adapters produce candidate evidence only.
+- Letting a scanner or reviewer-skill's output become a finding without
+  stage-2 verification — adapters produce candidate evidence only.
+- Using the CLI to "audit" — it has no judgment; it only serves the audit.

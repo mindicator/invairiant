@@ -85,6 +85,21 @@ property test" or "model this protocol before scaling it." Formal artifacts
 (specs, model-checker output, property-test suites) are first-class
 evidence.
 
+## Why not another CLI auditor?
+
+The CLI-auditor and linter space is saturated — Semgrep, CodeQL, Sonar,
+dependency scanners, a hundred linters — and it competes on finding *code
+patterns*. invAIriant deliberately does **not** enter that race. Its product is
+the [`/invairiant` agent skill](../skill/SKILL.md): a discipline for
+*AI-assisted architectural judgment*, where an LLM coding agent runs the audit
+under an evidence rule, and existing scanners feed in as evidence adapters.
+
+Its own [`invairiant` CLI](cli.md) is therefore intentionally tiny and does the
+opposite of a code auditor: it runs no lenses and produces no findings. It only
+scaffolds config, validates inputs/outputs against the schemas, collects other
+tools' output as candidate evidence, renders reports, and enforces the gate.
+The judgment layer is the skill; the CLI is its seatbelt.
+
 ## What invAIriant adds
 
 1. **A hard evidence rule** binding humans, tools, and AI to the same bar.
