@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -246,16 +247,9 @@ _ADAPTERS = {
 }
 
 
-def cmd_collect_evidence(args) -> int:
-    yaml = _need("yaml")
-    cfg_path = Path(args.config)
-    adapters = []
-    if cfg_path.exists():
-        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-        adapters = cfg.get("evidence_adapters", []) or []
-    else:
-        print(f"note: {cfg_path} not found; nothing declared to collect", file=sys.stderr)
-
+def _run_adapters(adapters: list, timeout: int, max_chars: int) -> list:
+    """Run declared evidence adapters, capturing raw output as candidate
+    evidence. Judges nothing — every item must still pass stage-2 verification."""
     out = []
     for name in adapters:
         cmd = _ADAPTERS.get(name)
@@ -266,25 +260,230 @@ def cmd_collect_evidence(args) -> int:
             print(f"note: '{cmd[0]}' not installed (skipping '{name}')", file=sys.stderr)
             continue
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.timeout)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             output = (proc.stdout + proc.stderr).strip()
             out.append({
                 "type": "command_output",
                 "adapter": name,
                 "command": " ".join(cmd),
                 "exit_code": proc.returncode,
-                "output": output[-args.max_chars:],
+                "output": output[-max_chars:],
                 "status": "candidate",
                 "note": "raw adapter output; must pass stage-2 verification to become a finding",
             })
         except subprocess.TimeoutExpired:
             out.append({"type": "command_output", "adapter": name, "command": " ".join(cmd),
-                        "exit_code": None, "output": f"(timed out after {args.timeout}s)", "status": "candidate"})
+                        "exit_code": None, "output": f"(timed out after {timeout}s)", "status": "candidate"})
+    return out
 
+
+def cmd_collect_evidence(args) -> int:
+    yaml = _need("yaml")
+    cfg_path = Path(args.config)
+    adapters = []
+    if cfg_path.exists():
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        adapters = cfg.get("evidence_adapters", []) or []
+    else:
+        print(f"note: {cfg_path} not found; nothing declared to collect", file=sys.stderr)
+
+    out = _run_adapters(adapters, args.timeout, args.max_chars)
     payload = json.dumps(out, indent=2, ensure_ascii=False)
     if args.out:
         Path(args.out).write_text(payload + "\n", encoding="utf-8")
         print(f"wrote {len(out)} candidate-evidence item(s) to {args.out}")
+    else:
+        print(payload)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# collect  (the full deterministic evidence bundle; the CLI's core helper)
+# --------------------------------------------------------------------------- #
+_SIGNAL_PATTERNS = {
+    "model_calls": r"openai|anthropic|claude|\bllm\b|chat\.completions|messages\.create|invoke_model|generate_content|\bcompletion\(",
+    "shell": r"subprocess\.|os\.system|\bPopen\b|child_process|\bexec\(|sh -c",
+    "sql": r"SELECT .*FROM|INSERT INTO|UPDATE .*SET|DELETE FROM|\.execute\(|\.query\(|\braw\(",
+    "secrets": r"api[_-]?key|secret|access[_-]?token|BEGIN [A-Z ]*PRIVATE KEY|password\s*=",
+    "todo": r"TODO|FIXME|XXX|HACK",
+}
+_IMPORT_PATTERN = r"^\s*(import\s+\S|from\s+\S+\s+import|import\s+.*\bfrom\b|#include|require\()"
+
+
+def _run(cmd: list, timeout: int = 60):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except Exception as exc:  # noqa: BLE001
+        return None, "", str(exc)
+
+
+def _git(args: list) -> str:
+    rc, out, _ = _run(["git"] + args)
+    return out.strip() if rc == 0 else ""
+
+
+def _grep(pattern: str, cap: int = 50) -> list:
+    """Candidate pointers only — file/line/match, never a finding."""
+    items = []
+    if shutil.which("rg"):
+        _, out, _ = _run(["rg", "-n", "-i", "--no-heading", "--color", "never",
+                          "-e", pattern, "--", "."], timeout=60)
+        for line in out.splitlines():
+            parts = line.split(":", 2)
+            if len(parts) < 3:
+                continue
+            f, ln, content = parts
+            items.append({"file": f, "line": int(ln) if ln.isdigit() else None,
+                          "match": content.strip()[:200]})
+            if len(items) >= cap:
+                break
+        return items
+    rx = re.compile(pattern, re.I)
+    _, files, _ = _run(["git", "ls-files"])
+    for f in files.splitlines():
+        p = Path(f)
+        if not p.is_file():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:  # noqa: BLE001
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if rx.search(line):
+                items.append({"file": f, "line": i, "match": line.strip()[:200]})
+                if len(items) >= cap:
+                    return items
+    return items
+
+
+def _lang_stats() -> dict:
+    _, files, _ = _run(["git", "ls-files"])
+    stats: dict = {}
+    for f in files.splitlines():
+        p = Path(f)
+        if not p.is_file():
+            continue
+        try:
+            n = sum(1 for _ in p.open("rb"))
+        except Exception:  # noqa: BLE001
+            continue
+        ext = p.suffix or "(none)"
+        stats[ext] = stats.get(ext, 0) + n
+    return dict(sorted(stats.items(), key=lambda kv: -kv[1])[:15])
+
+
+def _repo_tree() -> list:
+    _, files, _ = _run(["git", "ls-files"])
+    top: dict = {}
+    for f in files.splitlines():
+        head = f.split("/", 1)[0]
+        top[head] = top.get(head, 0) + 1
+    return [{"entry": k, "tracked_files": v} for k, v in sorted(top.items())]
+
+
+def _scope(rng) -> dict:
+    if rng:
+        _, names, _ = _run(["git", "diff", "--name-status", rng])
+        _, stat, _ = _run(["git", "diff", "--stat", rng])
+        changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
+                   for l in names.splitlines() if l.strip()]
+    else:
+        _, names, _ = _run(["git", "status", "--porcelain"])
+        _, stat, _ = _run(["git", "diff", "--stat"])
+        changed = [{"status": l[:2].strip(), "file": l[3:]}
+                   for l in names.splitlines() if l.strip()]
+    return {"range": rng, "changed_files": changed, "diffstat": stat.strip()[:4000]}
+
+
+def _generated_mass(rng) -> dict:
+    diff_args = ["git", "diff"] + ([rng] if rng else [])
+    _, shortstat, _ = _run(diff_args + ["--shortstat"])
+    _, numstat, _ = _run(diff_args + ["--numstat"])
+    files = []
+    for l in numstat.splitlines():
+        parts = l.split("\t")
+        if len(parts) >= 3 and parts[0].isdigit():
+            files.append({"file": parts[2], "added": int(parts[0]),
+                          "deleted": int(parts[1]) if parts[1].isdigit() else 0})
+    files.sort(key=lambda x: -(x["added"] + x["deleted"]))
+    return {"shortstat": shortstat.strip(), "largest_changed": files[:10]}
+
+
+def _config_and_docs():
+    cfg, docs = None, []
+    try:
+        import yaml
+    except Exception:  # noqa: BLE001
+        return cfg, docs
+    p = Path("invairiant.config.yml")
+    if p.exists():
+        cfg = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    for d in ((cfg or {}).get("canonical_docs") or []):
+        dp = Path(d)
+        if dp.is_file():
+            lines = dp.read_text(encoding="utf-8", errors="ignore").splitlines()[:40]
+            docs.append({"path": d, "excerpt": "\n".join(lines)[:2000]})
+        elif dp.is_dir():
+            docs.append({"path": d, "note": "directory"})
+    return cfg, docs
+
+
+def _known_rejected() -> list:
+    p = Path(".invairiant/history/rejected-hypotheses.jsonl")
+    out = []
+    if p.exists():
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except Exception:  # noqa: BLE001
+                pass
+    return out
+
+
+def cmd_collect(args) -> int:
+    cfg, docs = _config_and_docs()
+    git_info = {
+        "head": _git(["rev-parse", "HEAD"]),
+        "branch": _git(["rev-parse", "--abbrev-ref", "HEAD"]),
+        "dirty": bool(_git(["status", "--porcelain"])),
+    }
+    adapters = (cfg or {}).get("evidence_adapters", []) or []
+    bundle = {
+        "schema": "invairiant.evidence-bundle/v1",
+        "notice": ("All signals below are candidate pointers gathered by a deterministic "
+                   "helper — NOT findings. The /invairiant skill applies lenses; only "
+                   "verified, evidence-bound claims become findings. The CLI never judges."),
+        "generated_for": {
+            "repo": Path.cwd().name,
+            "commit": git_info["head"],
+            "branch": git_info["branch"],
+            "range": args.range,
+        },
+        "scope": _scope(args.range),
+        "repo_tree": _repo_tree(),
+        "language_stats": _lang_stats(),
+        "tests_ci": {
+            "git": git_info,
+            "adapters_ran": bool(args.run_adapters),
+            "adapters": _run_adapters(adapters, args.timeout, args.max_chars) if args.run_adapters else [],
+        },
+        "config": cfg,
+        "canonical_docs": docs,
+        "signals": {k: _grep(p, args.cap) for k, p in _SIGNAL_PATTERNS.items()},
+        "import_boundaries": _grep(_IMPORT_PATTERN, 60),
+        "generated_mass": _generated_mass(args.range),
+        "known_rejected": _known_rejected(),
+    }
+    payload = json.dumps(bundle, indent=2, ensure_ascii=False)
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(payload + "\n", encoding="utf-8")
+        n = sum(len(v) for v in bundle["signals"].values())
+        print(f"wrote evidence bundle to {args.out} ({n} candidate signal(s); raw — keep it gitignored)")
     else:
         print(payload)
     return 0
@@ -398,7 +597,16 @@ def main(argv=None) -> int:
     pr.add_argument("paths", nargs="+")
     pr.set_defaults(func=cmd_validate_report)
 
-    pe = sub.add_parser("collect-evidence", help="run declared adapters, emit candidate evidence JSON")
+    pcol = sub.add_parser("collect", help="gather a deterministic evidence bundle for the skill")
+    pcol.add_argument("--range", default=None, help="git range A..B (default: working-tree changes)")
+    pcol.add_argument("--out", default=None, help="write bundle here (convention: .invairiant/cache/, gitignored)")
+    pcol.add_argument("--run-adapters", action="store_true", help="also run declared evidence_adapters (slower)")
+    pcol.add_argument("--timeout", type=int, default=180)
+    pcol.add_argument("--max-chars", type=int, default=4000)
+    pcol.add_argument("--cap", type=int, default=50, help="max signal hits per category")
+    pcol.set_defaults(func=cmd_collect)
+
+    pe = sub.add_parser("collect-evidence", help="[alias] run declared adapters only (see `collect` for the full bundle)")
     pe.add_argument("--config", default="invairiant.config.yml")
     pe.add_argument("--out", default=None)
     pe.add_argument("--timeout", type=int, default=180)

@@ -28,6 +28,11 @@ follows Keep a Changelog; versions track the protocol, not any tooling.
   ($INVAIRIANT_HOME → repo layout → upward search).
 - **Self-audit** (`docs/audits/2026-07-03-self-audit.{md,json}`): the first
   full-scale audit of the framework against itself — verdict pass.
+- **`invairiant collect`** + `schemas/evidence-bundle.schema.json`: a
+  deterministic evidence bundle (diff scope, repo tree, language stats, grep
+  signals for model-calls/shell/SQL/secrets/TODO, import hints, generated
+  mass, known-rejected) handed to the skill as input. Every item is a
+  candidate pointer, never a finding. `collect-evidence` is kept as an alias.
 
 ### Fixed
 

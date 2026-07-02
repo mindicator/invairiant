@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://invairiant.org/schemas/evidence-bundle.schema.json",
+  "title": "invAIriant Evidence Bundle",
+  "description": "The deterministic fact bundle produced by `invairiant collect` and handed to the /invairiant skill as input. Everything here is a candidate pointer gathered mechanically — NOT a finding. The skill applies lenses; only verified, evidence-bound claims become findings. The CLI never judges.",
+  "type": "object",
+  "required": ["schema", "generated_for", "signals"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "invairiant.evidence-bundle/v1" },
+    "notice": { "type": "string" },
+    "generated_for": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "repo": { "type": "string" },
+        "commit": { "type": "string" },
+        "branch": { "type": "string" },
+        "range": { "type": ["string", "null"] }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "range": { "type": ["string", "null"] },
+        "changed_files": { "type": "array", "items": { "type": "object" } },
+        "diffstat": { "type": "string" }
+      }
+    },
+    "repo_tree": { "type": "array", "items": { "type": "object" } },
+    "language_stats": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "tests_ci": { "type": "object", "additionalProperties": true },
+    "config": { "type": ["object", "null"] },
+    "canonical_docs": { "type": "array", "items": { "type": "object" } },
+    "signals": {
+      "type": "object",
+      "required": ["model_calls", "shell", "sql", "secrets", "todo"],
+      "additionalProperties": { "$ref": "#/$defs/signalList" },
+      "properties": {
+        "model_calls": { "$ref": "#/$defs/signalList" },
+        "shell": { "$ref": "#/$defs/signalList" },
+        "sql": { "$ref": "#/$defs/signalList" },
+        "secrets": { "$ref": "#/$defs/signalList" },
+        "todo": { "$ref": "#/$defs/signalList" }
+      }
+    },
+    "import_boundaries": { "$ref": "#/$defs/signalList" },
+    "generated_mass": { "type": "object", "additionalProperties": true },
+    "known_rejected": { "type": "array", "items": { "type": "object" } }
+  },
+  "$defs": {
+    "signalList": {
+      "type": "array",
+      "description": "Candidate pointers, not findings.",
+      "items": {
+        "type": "object",
+        "required": ["file"],
+        "additionalProperties": true,
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": ["integer", "null"] },
+          "match": { "type": "string" }
+        }
+      }
+    }
+  }
+}

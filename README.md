@@ -137,7 +137,7 @@ supports it.
 |---|---|---|
 | **① Primary — the agent skill** | [`/invairiant`](skill/SKILL.md): an LLM coding agent runs the audit. Commands: `audit-pr`, `full-audit`, `verify-findings`, `classify-severity`, `synthesize-report`. **This is the product.** | ✅ usable now |
 | **② Secondary — the protocol layer** | [schemas](schemas/) + [templates](templates/) + [prompt pack](prompts/) + [lenses](lenses/) — the reusable contract the skill (or a human) stands on. | ✅ usable now |
-| **③ Helper — a narrow CLI** | [`invairiant`](docs/cli.md): `init`, `validate-config`, `validate-report`, `collect-evidence`, `render-report`, `ci-gate`. **It serves the audit; it never performs one** — no lenses, no findings, no scores. | ✅ reference impl |
+| **③ Helper — a narrow CLI** | [`invairiant`](docs/cli.md): `init`, `collect` (evidence bundle), `validate-config`, `validate-report`, `render-report`, `ci-gate`. **It serves the audit; it never performs one** — no lenses, no findings, no scores. | ✅ reference impl |
 
 **Does it pull in other skills?** Yes — by design it *orchestrates* rather
 than *reinvents*. Security scanners, code-review skills, dependency auditors,

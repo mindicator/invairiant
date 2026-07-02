@@ -43,3 +43,8 @@ tmp/
 
 # Python build/install artifacts
 *.egg-info/
+
+# Audit memory: commit ONLY the sanitized history/. Raw evidence bundles
+# (invairiant collect) and any local agent transcripts stay local.
+.invairiant/*
+!.invairiant/history/

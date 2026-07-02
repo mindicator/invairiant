@@ -41,3 +41,17 @@ jobs:
             echo "ci-gate should have failed on an S0 report"; exit 1
           fi
           echo "ci-gate correctly failed on open S0/S1"
+
+      - name: CLI smoke test (collect -> valid evidence bundle)
+        run: |
+          mkdir -p .invairiant/cache
+          python3 cli/invairiant.py collect --out .invairiant/cache/bundle.json
+          python3 - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator
+          schema = json.load(open('schemas/evidence-bundle.schema.json'))
+          data = json.load(open('.invairiant/cache/bundle.json'))
+          errs = list(Draft202012Validator(schema).iter_errors(data))
+          assert not errs, errs
+          print('evidence bundle valid;', sum(len(v) for v in data['signals'].values()), 'signals')
+          PY

@@ -63,14 +63,28 @@ Validate audit report JSON against
 [`schemas/audit-report.schema.json`](../schemas/audit-report.schema.json)
 (findings resolve against the finding schema). Exit 0/1.
 
+### `invairiant collect [--range A..B] [--out F] [--run-adapters] [--cap N]`
+Gather a deterministic **evidence bundle** for the skill — the CLI's core
+helper. One JSON object
+([`schemas/evidence-bundle.schema.json`](../schemas/evidence-bundle.schema.json),
+`invairiant.evidence-bundle/v1`) with: change `scope` (diff), `repo_tree`,
+`language_stats`, `tests_ci` (git status; adapters if `--run-adapters`),
+`config` + `canonical_docs` excerpts, `signals` (grep pointers for model
+calls / shell / SQL / secrets / TODO), `import_boundaries`, `generated_mass`,
+and `known_rejected` (from committed audit memory, Phase 6). Uses `rg` when
+present, else a Python fallback over `git ls-files`.
+
+**Everything in the bundle is a candidate pointer, not a finding** — it is
+input for the `/invairiant` skill, which applies lenses; only verified,
+evidence-bound claims become findings. Write the raw bundle under
+`.invairiant/cache/` (gitignored) — it contains code excerpts and candidate
+secret matches and must not be committed.
+
 ### `invairiant collect-evidence [--config P] [--out F] [--timeout S]`
-Run the evidence adapters declared in the config (`evidence_adapters`), capture
-each tool's raw output, and emit a JSON array of **candidate-evidence** items
-(`type: command_output`, with `exit_code` and truncated `output`). Recognized
-adapters: `pytest`, `go-test`, `golangci-lint`, `eslint`, `ruff`, `semgrep`,
-`vitest`. It runs only tools that are installed, times each out, and **judges
-nothing** — every item must still pass the skill's stage-2 verification before
-it can become a finding.
+Alias for the adapter-only subset of `collect`: runs the declared
+`evidence_adapters` (recognized: `pytest`, `go-test`, `golangci-lint`,
+`eslint`, `ruff`, `semgrep`, `vitest`) and emits their raw output as
+candidate-evidence items. Prefer `collect` for the full bundle.
 
 ### `invairiant render-report <report.json> [--out F]`
 Deterministically render a report JSON to Markdown in the shape of
