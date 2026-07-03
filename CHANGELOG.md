@@ -45,6 +45,13 @@ follows Keep a Changelog; versions track the protocol, not any tooling.
   a paste-ready PR comment (`templates/pr-comment.md` shape) — verdict, lenses,
   severity-sorted findings with evidence, conditions, and kept hypotheses. The
   deliverable of `/invairiant audit-pr`. No posting, no judgment.
+- **Audit memory** (`invairiant record` / `history`, committed
+  `.invairiant/history/`): each audit's distilled, **sanitized** findings /
+  rejected hypotheses / lens scores are appended (never raw evidence; secrets
+  redacted). `collect` feeds `known_rejected` back so the skill won't
+  re-propose refuted hypotheses; `validate-report` warns if a finding revives
+  one; `history` shows lens-score trends and recurring findings. Raw bundles and
+  transcripts stay gitignored under `.invairiant/cache/`.
 
 ### Changed
 

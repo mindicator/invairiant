@@ -55,6 +55,13 @@ jobs:
           fi
           echo "ci-gate correctly failed on open S0/S1"
 
+      - name: CLI smoke test (record + history over committed memory)
+        run: |
+          python3 cli/invairiant.py record docs/audits/2026-07-03-self-audit.json --dir /tmp/hist
+          python3 cli/invairiant.py history --dir /tmp/hist | grep -q 'lens score history' || { echo "history failed"; exit 1; }
+          python3 cli/invairiant.py history | grep -q 'parnas' || { echo "committed history unreadable"; exit 1; }
+          echo "record + history OK"
+
       - name: CLI smoke test (render-comment -> paste-ready PR comment)
         run: |
           out=$(python3 cli/invairiant.py render-comment docs/audits/2026-07-03-self-audit.json)

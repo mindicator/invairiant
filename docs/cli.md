@@ -126,6 +126,26 @@ files a report:
 - run: python3 cli/invairiant.py ci-gate docs/audits/latest.json
 ```
 
+### `invairiant record <report.json> [--audit-id ID] [--dir D]`
+Append a report's **distilled, sanitized** memory to `.invairiant/history/`
+(committed, default dir):
+
+- `rejected-hypotheses.jsonl` — `{date, audit, lens, text, rejected_reason, claim_key}`
+- `finding-registry.jsonl` — `{date, audit, id, severity, lens, category, claim, status, claim_key}`
+- `lens-score-history.csv` — `date,audit,lens,score`
+
+Only these distilled fields are stored — **never raw evidence blobs**, code, or
+diffs — and secret-like substrings in the stored text are redacted. `date`/
+`audit` come from the report (deterministic). Raw evidence bundles from
+`collect` stay under `.invairiant/cache/` (gitignored); only `record` writes to
+`history/`.
+
+### `invairiant history [--lens X] [--dir D]`
+Read audit memory and print lens-score trends (oldest → newest, flagging two
+consecutive drops) and findings recurring across audits. `collect` also feeds
+`known_rejected` back into the bundle so the skill does not re-propose a
+hypothesis a past audit already refuted.
+
 ## Explicit non-goals
 
 The CLI will never:

@@ -211,6 +211,22 @@ def cmd_validate_config(args) -> int:
 _ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]{3,}$")
 
 
+def _claim_key(text: str) -> str:
+    """A normalized key for matching a claim/hypothesis across audits."""
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())[:80]
+
+
+def _sanitize(s):
+    """Redact secret-like substrings before a value enters committed memory.
+    (Audit memory never stores raw evidence blobs — only distilled fields —
+    so this is a second line of defense on the text it does store.)"""
+    if not isinstance(s, str):
+        return s
+    s = re.sub(r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[=:]\s*\S+", r"\1=[REDACTED]", s)
+    s = re.sub(r"-----BEGIN[^-]*PRIVATE KEY-----", "[REDACTED KEY]", s)
+    return s[:600]
+
+
 def _report_threshold(config_path: str) -> float:
     try:
         import yaml
@@ -264,6 +280,19 @@ def _semantic_report_errors(data: dict, low_threshold: float):
     # rejected hypotheses must be kept, not dropped
     if "hypotheses" not in data:
         warns.append("no 'hypotheses' section — rejected hypotheses must be kept, not deleted")
+    # memory-aware: warn if a finding reuses a previously-rejected claim
+    rejp = Path(".invairiant/history/rejected-hypotheses.jsonl")
+    if rejp.exists():
+        rejected = set()
+        for line in rejp.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                try:
+                    rejected.add(json.loads(line).get("claim_key"))
+                except Exception:  # noqa: BLE001
+                    pass
+        for f in findings:
+            if _claim_key(f.get("claim", "")) in rejected:
+                warns.append(f"{f.get('id')}: claim matches a previously-rejected hypothesis in audit memory — re-verify before shipping")
     return errs, warns
 
 
@@ -744,6 +773,98 @@ def cmd_ci_gate(args) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# record / history  (committed, sanitized audit memory)
+# --------------------------------------------------------------------------- #
+def cmd_record(args) -> int:
+    data = json.loads(Path(args.report).read_text(encoding="utf-8"))
+    date = data.get("date", "")
+    audit = args.audit_id or data.get("title", "")[:80] or date
+    audit_csv = audit.replace(",", ";").replace("\n", " ")
+    hist = Path(args.dir)
+    hist.mkdir(parents=True, exist_ok=True)
+
+    rejected = [h for h in data.get("hypotheses", []) if h.get("rejected_reason")]
+    with (hist / "rejected-hypotheses.jsonl").open("a", encoding="utf-8") as f:
+        for h in rejected:
+            f.write(json.dumps({
+                "date": date, "audit": audit, "lens": h.get("lens"),
+                "text": _sanitize(h.get("text", "")),
+                "rejected_reason": _sanitize(h.get("rejected_reason", "")),
+                "claim_key": _claim_key(h.get("text", "")),
+            }, ensure_ascii=False) + "\n")
+
+    findings = data.get("findings", [])
+    with (hist / "finding-registry.jsonl").open("a", encoding="utf-8") as f:
+        for fd in findings:
+            f.write(json.dumps({
+                "date": date, "audit": audit, "id": fd.get("id"),
+                "severity": fd.get("severity"), "lens": fd.get("lens"),
+                "category": fd.get("category"), "claim": _sanitize(fd.get("claim", "")),
+                "status": fd.get("status", "verified"),
+                "claim_key": _claim_key(fd.get("claim", "")),
+            }, ensure_ascii=False) + "\n")
+
+    scores = data.get("lens_scores", [])
+    csvp = hist / "lens-score-history.csv"
+    new = not csvp.exists()
+    with csvp.open("a", encoding="utf-8") as f:
+        if new:
+            f.write("date,audit,lens,score\n")
+        for s in scores:
+            f.write(f"{date},{audit_csv},{s.get('lens')},{s.get('score')}\n")
+
+    print(f"recorded into {hist}/ — {len(findings)} finding(s), "
+          f"{len(rejected)} rejected hypothes(e)s, {len(scores)} lens score(s). "
+          f"Sanitized; commit history/, keep cache/ local.")
+    return 0
+
+
+def cmd_history(args) -> int:
+    import csv as _csv
+    from collections import Counter, defaultdict
+    hist = Path(args.dir)
+    csvp = hist / "lens-score-history.csv"
+    if not csvp.exists():
+        _die(f"no audit memory at {csvp} — run `invairiant record` first", 1)
+    by_lens = defaultdict(list)
+    for r in _csv.DictReader(csvp.open(encoding="utf-8")):
+        if args.lens and r["lens"] != args.lens:
+            continue
+        try:
+            by_lens[r["lens"]].append((r["date"], float(r["score"])))
+        except (KeyError, ValueError):
+            pass
+    print("lens score history (oldest → newest):")
+    for lens, seq in sorted(by_lens.items()):
+        seq.sort()
+        scores = [s for _, s in seq]
+        trend = " → ".join(f"{s:g}" for s in scores)
+        flag = "   ⚠ two consecutive drops" if len(scores) >= 3 and scores[-1] < scores[-2] < scores[-3] else ""
+        print(f"  {lens:26} {trend}{flag}")
+    freg = hist / "finding-registry.jsonl"
+    if freg.exists():
+        keys = Counter()
+        labels = {}
+        for line in freg.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            k = rec.get("claim_key")
+            if k:
+                keys[k] += 1
+                labels[k] = rec.get("claim", "")[:60]
+        recurring = [(k, c) for k, c in keys.items() if c > 1]
+        if recurring:
+            print("recurring findings (seen in >1 audit):")
+            for k, c in sorted(recurring, key=lambda x: -x[1]):
+                print(f"  {c}×  {labels.get(k, k)}")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="invairiant",
                                 description="Infrastructure around the agentic audit. It does not audit.")
@@ -797,6 +918,17 @@ def main(argv=None) -> int:
     pg.add_argument("--max-severity", choices=["S0", "S1"], default="S1",
                     help="S1 (default) blocks S0+S1; S0 blocks only S0")
     pg.set_defaults(func=cmd_ci_gate)
+
+    prec = sub.add_parser("record", help="append a report's distilled, sanitized memory to .invairiant/history/")
+    prec.add_argument("report")
+    prec.add_argument("--audit-id", default=None)
+    prec.add_argument("--dir", default=".invairiant/history")
+    prec.set_defaults(func=cmd_record)
+
+    phi = sub.add_parser("history", help="show lens-score trends and recurring findings from audit memory")
+    phi.add_argument("--lens", default=None)
+    phi.add_argument("--dir", default=".invairiant/history")
+    phi.set_defaults(func=cmd_history)
 
     args = p.parse_args(argv)
     return args.func(args)

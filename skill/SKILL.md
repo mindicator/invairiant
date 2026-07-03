@@ -98,7 +98,9 @@ found, run **degraded mode** (below) rather than inventing lens content.
    (diff, tree, language stats, grep signals, import hints, generated mass,
    known-rejected). Hand it to the lens passes as input. Everything in it is a
    **candidate pointer, never a finding** — it still passes stage 2. The raw
-   bundle stays gitignored.
+   bundle stays gitignored. Its `known_rejected` lists hypotheses ruled out in
+   past audits (from committed memory) — **do not re-propose them** without new
+   evidence.
 
 ## Command procedures
 
@@ -129,7 +131,11 @@ or a second agent spot-checks). Then stages 2→4. Fill
 observations, **Unsupported Hypotheses (kept)**, strongest/weakest lens,
 required actions with owners, evidence appendix. Every audit produces
 decisions; an audit without decisions does not count. Validate the result:
-`invairiant validate-report`. File it in the config's report dir.
+`invairiant validate-report`. File it in the config's report dir, then
+**record it to audit memory**: `invairiant record <report.json>` appends the
+distilled, sanitized findings / rejected hypotheses / lens scores to
+`.invairiant/history/` (committed). Use `invairiant history` to see lens-score
+trends and recurring findings.
 
 ### `verify-findings`
 Input: candidate findings (JSON per `schemas/finding.schema.json`, or prose).
@@ -171,7 +177,9 @@ judgment (`docs/cli.md`):
 - `invairiant validate-config` / `validate-report` — schema-check inputs/outputs;
 - `invairiant render-report` — deterministic JSON→Markdown;
 - `invairiant render-comment` — deterministic report→PR-comment;
-- `invairiant ci-gate` — exit non-zero on open S0/S1.
+- `invairiant ci-gate` — exit non-zero on open S0/S1;
+- `invairiant record` / `history` — append/read committed sanitized audit
+  memory (rejected hypotheses, finding registry, lens-score trends).
 
 The CLI never runs a lens, produces a finding, or assigns a score. All
 architectural judgment lives here, in the agent, under these prompts.

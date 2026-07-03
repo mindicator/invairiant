@@ -171,8 +171,16 @@ error, not the size of the diff.
 
 - Every S0/S1 finding gets an owner and a deadline at synthesis time.
 - Re-audit triggers are recorded in the report (date or condition).
-- Score history is kept (a simple table per lens over time); two consecutive
-  drops open an action item regardless of absolute value.
-- Rejected hypotheses are carried forward in the report archive — an auditor
-  proposing the same hypothesis later starts from the recorded rejection,
-  not from zero.
+- **Audit memory (`.invairiant/history/`, committed & sanitized).** After each
+  audit, `invairiant record <report.json>` appends the distilled findings,
+  rejected hypotheses, and lens scores — no raw evidence, secrets redacted.
+  This turns the discipline below from prose into data:
+  - Score history is kept per lens; `invairiant history` flags two consecutive
+    drops (open an action item regardless of absolute value).
+  - Rejected hypotheses are carried forward — `invairiant collect` feeds them
+    back as `known_rejected`, so an auditor proposing the same hypothesis later
+    starts from the recorded rejection, not from zero, and `validate-report`
+    warns if a finding revives a refuted claim.
+  - Findings recurring across audits are the backlog for lint rules / CI gates.
+  - Raw evidence bundles and local transcripts stay under `.invairiant/cache/`
+    (gitignored) — only the sanitized `history/` is committed.
