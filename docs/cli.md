@@ -86,8 +86,10 @@ helper. One JSON object
 `language_stats`, `tests_ci` (git status; adapters if `--run-adapters`),
 `config` + `canonical_docs` excerpts, `signals` (grep pointers for model
 calls / shell / SQL / secrets / TODO), `import_boundaries`, `generated_mass`,
-and `known_rejected` (from committed audit memory, Phase 6). Uses `rg` when
-present, else a Python fallback over `git ls-files`.
+and `known_rejected` (from committed audit memory). Uses `rg` when present,
+else a **bounded** single-pass fallback over `git ls-files` that skips large
+(>512 KB) and binary files and caps the file count — the bundle's `limits`
+block reports the bounds and whether the scan truncated (no silent caps).
 
 **Everything in the bundle is a candidate pointer, not a finding** — it is
 input for the `/invairiant` skill, which applies lenses; only verified,
@@ -135,8 +137,11 @@ Append a report's **distilled, sanitized** memory to `.invairiant/history/`
 - `lens-score-history.csv` — `date,audit,lens,score`
 
 Only these distilled fields are stored — **never raw evidence blobs**, code, or
-diffs — and secret-like substrings in the stored text are redacted. `date`/
-`audit` come from the report (deterministic). Raw evidence bundles from
+diffs — and secret-like substrings (PEM keys, AWS/GitHub/Slack tokens,
+`Authorization`/`Bearer`, `key=value`) are redacted. `date`/`audit` come from
+the report (deterministic). The history dir defaults to
+**`<repo-root>/.invairiant/history`** (resolved via git, so `record` / `history`
+work from any subdirectory); override with `--dir`. Raw evidence bundles from
 `collect` stay under `.invairiant/cache/` (gitignored); only `record` writes to
 `history/`.
 

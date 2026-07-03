@@ -7,10 +7,11 @@ follows Keep a Changelog; versions track the protocol.
 
 ### Added
 
-- **Unit-test suite** (`tests/`, 40 tests) for the CLI — parser dispatch,
+- **Unit-test suite** (`tests/`, 55 tests) for the CLI — parser dispatch,
   `validate-report` semantic-linter rules, secret redaction, `record`
-  idempotency + sanitization, claim-key matching, and `history` trends. CI runs
-  `pytest`. (Closes self-audit finding CLOSE-003.)
+  idempotency + sanitization, claim-key matching, `history` trends, repo-root
+  memory resolution, and the bounded `collect` scan. CI runs `pytest`. (Closes
+  self-audit finding CLOSE-003.)
 - **Roadmap for v0.2** ([`ROADMAP.md`](ROADMAP.md)) — hardening and reach, **no
   new lenses**.
 - A **60-second Quickstart** at the top of the README and a demo PR-comment
@@ -22,6 +23,19 @@ follows Keep a Changelog; versions track the protocol.
   AI-assisted development of complex, high-load systems — that is its story.
 - **`pyproject.toml` version synced to 0.1.1** to match the released protocol
   version.
+
+### Fixed
+
+- **Memory & `collect` hardening on large repos** (from self-audit #2):
+  - `record` / `history` / the memory-aware linter now resolve
+    `.invairiant/history/` from the **repo root**, not the current directory,
+    so running the CLI from a subdirectory no longer silently misses committed
+    audit memory (**CLOSE-001**).
+  - `collect` bounds its scan — skips large (>512 KB) and binary files, caps the
+    file count, does a single O(files) pass, and reports `limits` in the bundle
+    (no silent truncation) (**CLOSE-002**).
+  - `record` secret redaction hardened: full PEM blocks (not just the header),
+    AWS/GitHub/Slack tokens, and `Authorization` / `Bearer` values.
 
 ## [0.1.1] — 2026-07-03
 

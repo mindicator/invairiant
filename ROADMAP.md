@@ -17,11 +17,6 @@ core packs.
 - Publish the `invairiant` CLI to PyPI (`pip install invairiant`).
 - A reusable GitHub Action wrapping `collect → validate-report → ci-gate`.
 
-**CLI robustness** (from self-audit #2)
-- Resolve `.invairiant/history/` from the repo root, not the CWD (CLOSE-001).
-- Bound the `collect` grep fallback on very large repos (CLOSE-002).
-- Harden `record` secret redaction (more patterns, all tested).
-
 **Evidence base**
 - More worked case studies across project types (SaaS, data platform, infra),
   ideally from real, opted-in diffs.
@@ -46,4 +41,6 @@ core packs.
 - The CLI: `init`, `collect`, `validate-config`, `validate-report`,
   `render-report`, `render-comment`, `ci-gate`, `record`, `history`.
 - Committed, sanitized audit memory; two self-audits with a per-lens trend.
-- Unit tests for the CLI *(Unreleased → v0.1.x)*.
+- Unit tests for the CLI (55) *(Unreleased → v0.1.x)*.
+- CLI robustness — repo-root memory resolution, bounded `collect` on large
+  repos, hardened secret redaction (CLOSE-001/002) *(Unreleased → v0.1.x)*.

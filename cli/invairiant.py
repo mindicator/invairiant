@@ -211,19 +211,49 @@ def cmd_validate_config(args) -> int:
 _ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]{3,}$")
 
 
+def _repo_root() -> Path:
+    """The git repo root, so audit memory resolves the same from any subdir.
+    Falls back to CWD outside a git repo (e.g. a temp dir in tests)."""
+    try:
+        p = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True, timeout=5)
+        if p.returncode == 0 and p.stdout.strip():
+            return Path(p.stdout.strip())
+    except Exception:  # noqa: BLE001
+        pass
+    return Path.cwd()
+
+
+def _history_dir() -> Path:
+    return _repo_root() / ".invairiant" / "history"
+
+
 def _claim_key(text: str) -> str:
     """A normalized key for matching a claim/hypothesis across audits."""
     return re.sub(r"[^a-z0-9]+", "", (text or "").lower())[:80]
 
 
+# Applied in order before any value enters committed memory.
+_SECRET_SUBS = [
+    (re.compile(r"-----BEGIN[^-]*PRIVATE KEY-----[\s\S]*?-----END[^-]*PRIVATE KEY-----"), "[REDACTED KEY]"),
+    (re.compile(r"-----BEGIN[^-]*PRIVATE KEY-----"), "[REDACTED KEY]"),
+    (re.compile(r"(?i)\b(authorization)\b\s*[:=]\s*(?:bearer\s+)?\S+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{12,}"), "bearer [REDACTED]"),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED AWS KEY]"),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "[REDACTED TOKEN]"),
+    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "[REDACTED TOKEN]"),
+    (re.compile(r"(?i)\b(api[_-]?key|secret|token|password|passwd)\b\s*[=:]\s*\S+"), r"\1=[REDACTED]"),
+]
+
+
 def _sanitize(s):
     """Redact secret-like substrings before a value enters committed memory.
-    (Audit memory never stores raw evidence blobs — only distilled fields —
-    so this is a second line of defense on the text it does store.)"""
+    Audit memory never stores raw evidence blobs — only distilled fields — so
+    this is a second line of defense on the text it does store."""
     if not isinstance(s, str):
         return s
-    s = re.sub(r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[=:]\s*\S+", r"\1=[REDACTED]", s)
-    s = re.sub(r"-----BEGIN[^-]*PRIVATE KEY-----", "[REDACTED KEY]", s)
+    for rx, repl in _SECRET_SUBS:
+        s = rx.sub(repl, s)
     return s[:600]
 
 
@@ -281,7 +311,7 @@ def _semantic_report_errors(data: dict, low_threshold: float):
     if "hypotheses" not in data:
         warns.append("no 'hypotheses' section — rejected hypotheses must be kept, not deleted")
     # memory-aware: warn if a finding reuses a previously-rejected claim
-    rejp = Path(".invairiant/history/rejected-hypotheses.jsonl")
+    rejp = _history_dir() / "rejected-hypotheses.jsonl"
     if rejp.exists():
         rejected = set()
         for line in rejp.read_text(encoding="utf-8").splitlines():
@@ -443,48 +473,85 @@ def _git(args: list) -> str:
     return out.strip() if rc == 0 else ""
 
 
-def _grep(pattern: str, cap: int = 50) -> list:
-    """Candidate pointers only — file/line/match, never a finding."""
+# Bounds so `collect` stays fast and memory-safe on very large repos.
+_MAX_SCAN_FILES = 4000        # tracked files read in the no-ripgrep fallback
+_MAX_FILE_BYTES = 512 * 1024  # skip files larger than this (likely data/binary)
+
+
+def _is_probably_binary(path: Path, sniff: int = 1024) -> bool:
+    try:
+        with path.open("rb") as fh:
+            return b"\x00" in fh.read(sniff)
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _rg(pattern: str, cap: int) -> list:
     items = []
+    _, out, _ = _run(["rg", "-n", "-i", "--no-heading", "--color", "never",
+                      "-e", pattern, "--", "."], timeout=60)
+    for line in out.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) < 3:
+            continue
+        f, ln, content = parts
+        items.append({"file": f, "line": int(ln) if ln.isdigit() else None,
+                      "match": content.strip()[:200]})
+        if len(items) >= cap:
+            break
+    return items
+
+
+def _scan(patterns: dict, cap: int, budget: dict) -> dict:
+    """Grep candidate pointers for each named pattern. Ripgrep per pattern when
+    available; otherwise ONE bounded pass over tracked files (skipping large and
+    binary files, capping the file count) so the cost is O(files), not
+    O(files x patterns), and never unbounded. Candidate pointers, not findings."""
     if shutil.which("rg"):
-        _, out, _ = _run(["rg", "-n", "-i", "--no-heading", "--color", "never",
-                          "-e", pattern, "--", "."], timeout=60)
-        for line in out.splitlines():
-            parts = line.split(":", 2)
-            if len(parts) < 3:
-                continue
-            f, ln, content = parts
-            items.append({"file": f, "line": int(ln) if ln.isdigit() else None,
-                          "match": content.strip()[:200]})
-            if len(items) >= cap:
-                break
-        return items
-    rx = re.compile(pattern, re.I)
+        return {k: _rg(p, cap) for k, p in patterns.items()}
+    compiled = {k: re.compile(p, re.I) for k, p in patterns.items()}
+    out = {k: [] for k in patterns}
     _, files, _ = _run(["git", "ls-files"])
     for f in files.splitlines():
         p = Path(f)
         if not p.is_file():
             continue
+        if budget["files_scanned"] >= budget["max_files"]:
+            budget["truncated"] = True
+            break
         try:
+            if p.stat().st_size > budget["max_bytes"] or _is_probably_binary(p):
+                budget["skipped_large_or_binary"] += 1
+                continue
             text = p.read_text(encoding="utf-8", errors="ignore")
         except Exception:  # noqa: BLE001
             continue
+        budget["files_scanned"] += 1
         for i, line in enumerate(text.splitlines(), 1):
-            if rx.search(line):
-                items.append({"file": f, "line": i, "match": line.strip()[:200]})
-                if len(items) >= cap:
-                    return items
-    return items
+            for k, rx in compiled.items():
+                if len(out[k]) < cap and rx.search(line):
+                    out[k].append({"file": f, "line": i, "match": line.strip()[:200]})
+    return out
+
+
+def _new_budget() -> dict:
+    return {"max_files": _MAX_SCAN_FILES, "max_bytes": _MAX_FILE_BYTES,
+            "files_scanned": 0, "skipped_large_or_binary": 0, "truncated": False,
+            "ripgrep": bool(shutil.which("rg"))}
 
 
 def _lang_stats() -> dict:
     _, files, _ = _run(["git", "ls-files"])
     stats: dict = {}
-    for f in files.splitlines():
+    for i, f in enumerate(files.splitlines()):
+        if i >= _MAX_SCAN_FILES:
+            break
         p = Path(f)
         if not p.is_file():
             continue
         try:
+            if p.stat().st_size > _MAX_FILE_BYTES:
+                continue
             n = sum(1 for _ in p.open("rb"))
         except Exception:  # noqa: BLE001
             continue
@@ -550,7 +617,7 @@ def _config_and_docs():
 
 
 def _known_rejected() -> list:
-    p = Path(".invairiant/history/rejected-hypotheses.jsonl")
+    p = _history_dir() / "rejected-hypotheses.jsonl"
     out = []
     if p.exists():
         for line in p.read_text(encoding="utf-8").splitlines():
@@ -572,6 +639,11 @@ def cmd_collect(args) -> int:
         "dirty": bool(_git(["status", "--porcelain"])),
     }
     adapters = (cfg or {}).get("evidence_adapters", []) or []
+    budget = _new_budget()
+    patterns = dict(_SIGNAL_PATTERNS)
+    patterns["import_boundaries"] = _IMPORT_PATTERN
+    scanned = _scan(patterns, args.cap, budget)
+    imports = scanned.pop("import_boundaries")
     bundle = {
         "schema": "invairiant.evidence-bundle/v1",
         "notice": ("All signals below are candidate pointers gathered by a deterministic "
@@ -593,10 +665,11 @@ def cmd_collect(args) -> int:
         },
         "config": cfg,
         "canonical_docs": docs,
-        "signals": {k: _grep(p, args.cap) for k, p in _SIGNAL_PATTERNS.items()},
-        "import_boundaries": _grep(_IMPORT_PATTERN, 60),
+        "signals": scanned,
+        "import_boundaries": imports,
         "generated_mass": _generated_mass(args.range),
         "known_rejected": _known_rejected(),
+        "limits": budget,
     }
     payload = json.dumps(bundle, indent=2, ensure_ascii=False)
     if args.out:
@@ -780,7 +853,7 @@ def cmd_record(args) -> int:
     date = data.get("date", "")
     audit = args.audit_id or data.get("title", "")[:80] or date
     audit_csv = audit.replace(",", ";").replace("\n", " ")
-    hist = Path(args.dir)
+    hist = Path(args.dir) if args.dir else _history_dir()
     hist.mkdir(parents=True, exist_ok=True)
 
     # Idempotent by audit label: re-recording the same audit would duplicate
@@ -837,7 +910,7 @@ def cmd_record(args) -> int:
 def cmd_history(args) -> int:
     import csv as _csv
     from collections import Counter, defaultdict
-    hist = Path(args.dir)
+    hist = Path(args.dir) if args.dir else _history_dir()
     csvp = hist / "lens-score-history.csv"
     if not csvp.exists():
         _die(f"no audit memory at {csvp} — run `invairiant record` first", 1)
@@ -937,13 +1010,13 @@ def main(argv=None) -> int:
     prec = sub.add_parser("record", help="append a report's distilled, sanitized memory to .invairiant/history/")
     prec.add_argument("report")
     prec.add_argument("--audit-id", default=None)
-    prec.add_argument("--dir", default=".invairiant/history")
+    prec.add_argument("--dir", default=None, help="default: <repo-root>/.invairiant/history")
     prec.add_argument("--force", action="store_true", help="re-record even if this audit is already in memory")
     prec.set_defaults(func=cmd_record)
 
     phi = sub.add_parser("history", help="show lens-score trends and recurring findings from audit memory")
     phi.add_argument("--lens", default=None)
-    phi.add_argument("--dir", default=".invairiant/history")
+    phi.add_argument("--dir", default=None, help="default: <repo-root>/.invairiant/history")
     phi.set_defaults(func=cmd_history)
 
     args = p.parse_args(argv)
