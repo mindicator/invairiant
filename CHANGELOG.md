@@ -5,7 +5,14 @@ follows Keep a Changelog; versions track the protocol.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Cross-agent adapters** — the skill now runs beyond Claude Code. A portable
+  root [`AGENTS.md`](AGENTS.md) (Codex and any AGENTS.md-aware agent) and
+  [`.cursor/rules/invairiant.mdc`](.cursor/rules/invairiant.mdc) (Cursor) reach
+  the same protocol, both pointing to the canonical `skill/SKILL.md` instead of
+  duplicating it. Per-agent install in `skill/README.md`; README badges link
+  each.
 
 ## [0.1.0] — 2026-07-03
 

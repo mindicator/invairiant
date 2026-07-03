@@ -9,8 +9,9 @@
 [![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue?style=flat-square)](https://github.com/mindicator/invairiant/releases/tag/v0.1.0)
 [![Lenses: 28](https://img.shields.io/badge/lenses-28-8A2BE2?style=flat-square)](docs/lens-taxonomy.md)
 [![Packs: 7](https://img.shields.io/badge/packs-7-informational?style=flat-square)](lenses/)
-[![Claude Code skill](https://img.shields.io/badge/Claude%20Code-skill-5A67D8?style=flat-square)](skill/SKILL.md)
-[![Codex compatible](https://img.shields.io/badge/Codex-compatible-black?style=flat-square)](prompts/)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-skill-5A67D8?style=flat-square)](skill/SKILL.md)
+[![Codex](https://img.shields.io/badge/Codex-AGENTS.md-black?style=flat-square)](AGENTS.md)
+[![Cursor](https://img.shields.io/badge/Cursor-rule-2B2B2B?style=flat-square)](.cursor/rules/invairiant.mdc)
 [![Evidence first](https://img.shields.io/badge/evidence-first-brightgreen?style=flat-square)](docs/evidence-rules.md)
 [![No evidence, no finding](https://img.shields.io/badge/no%20evidence-no%20finding-critical?style=flat-square)](docs/evidence-rules.md)
 
@@ -53,6 +54,10 @@ mkdir -p .claude/skills && ln -s "$PWD/skill" .claude/skills/invairiant
 #   /invairiant audit-pr        # audit the current diff/PR → a PR comment
 #   /invairiant full-audit      # whole repo, mandatory lenses → a report
 ```
+
+Same protocol in **Codex** (root [`AGENTS.md`](AGENTS.md)) and **Cursor**
+([`.cursor/rules/`](.cursor/rules/invairiant.mdc)) — just ask for an
+"invAIriant audit-pr." Per-agent install: [skill/README.md](skill/README.md).
 
 **Helper — the CLI seatbelt** (never audits — no lenses, findings, or scores):
 

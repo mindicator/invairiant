@@ -4,6 +4,12 @@
 runs the audit itself. The schemas, templates, and prompt pack are the layer it
 stands on; the [CLI](../cli/README.md) is only infrastructure around it.
 
+**`SKILL.md` is the single source of truth; it is agent-agnostic.** Claude Code
+loads it as a skill; Codex and Cursor reach the same protocol through the
+portable [`AGENTS.md`](../AGENTS.md) and
+[`.cursor/rules/invairiant.mdc`](../.cursor/rules/invairiant.mdc), which point
+back here rather than duplicating it.
+
 ## Commands
 
 `/invairiant <command>`:
@@ -20,15 +26,26 @@ stands on; the [CLI](../cli/README.md) is only infrastructure around it.
 `--lenses a,b` overrides lens selection; omit it to pick by risk surface.
 All under one rule: **no evidence, no finding.**
 
-## Install
+## Install — per agent
 
-- **Project skill:**
+Same protocol, three discovery mechanisms. Point any of them at the framework
+tree (set `INVAIRIANT_HOME=/path/to/framework` if it lives outside your repo;
+without the lens library a documented degraded mode runs four generic lenses).
+
+- **Claude Code** — load `skill/` as a skill:
   `mkdir -p .claude/skills && cp -r <framework>/skill .claude/skills/invairiant`
   (or symlink). Local `.claude/` is gitignored, so run this once per clone.
-- **Personal skill:** `cp -r <framework>/skill ~/.claude/skills/invairiant`.
-- **Framework elsewhere:** set `INVAIRIANT_HOME=/path/to/framework` so the skill
-  finds the lens library; without it, a documented degraded mode runs four
-  generic lenses.
+  Personal: `cp -r <framework>/skill ~/.claude/skills/invairiant`. Drive it
+  with `/invairiant <command>`.
+- **Codex** (and any `AGENTS.md`-aware agent) — copy [`AGENTS.md`](../AGENTS.md)
+  into your repo root (merge with an existing one). Then ask the agent to "run
+  an invAIriant audit-pr"; it follows the protocol from `AGENTS.md` →
+  `SKILL.md`.
+- **Cursor** — copy [`.cursor/rules/invairiant.mdc`](../.cursor/rules/invairiant.mdc)
+  into your repo's `.cursor/rules/`. Cursor also reads `AGENTS.md`.
+
+In all three, the `invairiant` CLI (`pip install -e .`) is the same
+judgment-free seatbelt.
 
 ## How it relates to other skills and tools
 
