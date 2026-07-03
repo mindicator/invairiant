@@ -5,7 +5,17 @@ follows Keep a Changelog; versions track the protocol.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Roadmap for v0.2** ([`ROADMAP.md`](ROADMAP.md)) — hardening and reach, **no
+  new lenses**.
+- A **60-second Quickstart** at the top of the README and a demo PR-comment
+  visual ([`assets/pr-comment.svg`](assets/pr-comment.svg)).
+
+### Changed
+
+- **Origin narrative** reframed (README / NOTICE): invAIriant was forged in
+  AI-assisted development of complex, high-load systems — that is its story.
 
 ## [0.1.1] — 2026-07-03
 
@@ -20,11 +30,10 @@ _Nothing yet._
 
 ## [0.1.0] — 2026-07-03
 
-First public release. Extracted and generalized from a real persistent-mesh
-network project's audit and refactoring canon into a reusable, evidence-first,
-multi-lens audit protocol
-for AI-era codebases. One rule underneath all of it: **no evidence, no
-finding.**
+First public release. A reusable, evidence-first, multi-lens architecture-audit
+protocol for AI-era codebases, distilled from real-world auditing of AI-assisted
+development on complex, high-load systems. One rule underneath all of it: **no
+evidence, no finding.**
 
 ### Protocol & lenses
 

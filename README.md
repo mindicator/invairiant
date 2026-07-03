@@ -14,7 +14,7 @@
 [![Evidence first](https://img.shields.io/badge/evidence-first-brightgreen?style=flat-square)](docs/evidence-rules.md)
 [![No evidence, no finding](https://img.shields.io/badge/no%20evidence-no%20finding-critical?style=flat-square)](docs/evidence-rules.md)
 
-**Evidence-based, multi-lens architecture audits for systems that must not drift.**
+**An evidence-based, multi-lens architecture-audit skill (+ CLI) for systems that must not drift.**
 
 `AI-assisted analysis` · `human council` · `evidence first` · `complex systems, under control`
 
@@ -23,6 +23,22 @@
 </div>
 
 ---
+
+## Quickstart (60 seconds)
+
+```bash
+pip install -e .                                    # the invairiant CLI
+invairiant collect --out .invairiant/cache/b.json   # 1 · gather evidence (candidate pointers)
+#   2 · in your agent — Claude Code / Codex / Cursor:
+#       /invairiant audit-pr   → runs the lens pipeline, writes report.json
+invairiant render-comment report.json               # 3 · paste-ready PR comment
+invairiant ci-gate report.json                      # 4 · exit 1 on open S0/S1
+```
+
+Per-agent skill setup (Claude Code · Codex · Cursor):
+[skill/README.md](skill/README.md). Full worked run with real output:
+[docs/demo.md](docs/demo.md). No tooling at all? Run the protocol by hand from
+[`examples/`](examples/) + [docs/audit-workflow.md](docs/audit-workflow.md).
 
 ## No evidence. No finding.
 
@@ -42,35 +58,6 @@ one rule that keeps it honest:
 > findings.** A high average score never cancels a critical finding, and a
 > rejected hypothesis is kept in the report — never silently dropped, never
 > silently promoted.
-
-## Quick start
-
-**Primary — the agent skill.** Install it, then audit from the agent:
-
-```bash
-mkdir -p .claude/skills && ln -s "$PWD/skill" .claude/skills/invairiant
-# then, in the agent:
-#   /invairiant audit-pr        # audit the current diff/PR → a PR comment
-#   /invairiant full-audit      # whole repo, mandatory lenses → a report
-```
-
-Same protocol in **Codex** (root [`AGENTS.md`](AGENTS.md)) and **Cursor**
-([`.cursor/rules/`](.cursor/rules/invairiant.mdc)) — just ask for an
-"invAIriant audit-pr." Per-agent install: [skill/README.md](skill/README.md).
-
-**Helper — the CLI seatbelt** (never audits — no lenses, findings, or scores):
-
-```bash
-pip install -e .                                        # the `invairiant` command
-invairiant init --type infra-service                    # scaffold the config
-invairiant collect --out .invairiant/cache/bundle.json  # evidence bundle
-invairiant ci-gate docs/audits/x.json                   # fail CI on open S0/S1
-```
-
-See the **[full demo flow](docs/demo.md)** — `collect → audit-pr → report →
-render-comment → record` — with real output. No tooling at all? Run the
-protocol by hand from [`examples/`](examples/) +
-[docs/audit-workflow.md](docs/audit-workflow.md).
 
 ## How it works — the four-stage pipeline
 
@@ -147,6 +134,10 @@ AI-assisted review into one auditable trail — not a replacement for the tools
 it consumes.
 
 ## See it catch what a reviewer misses
+
+<div align="center">
+<img src="assets/pr-comment.svg" alt="Example invAIriant PR-audit comment: verdict pass_with_conditions, an S1 finding CRT-001 with evidence and fix, a kept rejected hypothesis, and ci-gate exiting 1 to block the merge" width="88%">
+</div>
 
 Four worked [**case studies**](case-studies/) — illustrative, each modelling a
 real defect class — show the diff, the chosen lenses, the verified findings,
@@ -240,23 +231,24 @@ authorship is credited as *mindicator & silicon bags quartet*. See
 
 ## Origins
 
-invAIriant was extracted from the audit and refactoring canon of a real
-**persistent-mesh network project**, where user safety is a functional
-requirement and every architecturally significant change is audited. The
-general-engineering lenses, the 0–10 scale, the score-to-severity mapping, the
-anti-averaging rules, and the audit types are generalizations of that canon;
-that project's domain judgment survives in the optional
-[network-persistence](lenses/domain/network-persistence.md) lens. **Nothing in
-the core framework requires knowing the origin project.**
+invAIriant was forged in the fire of **AI-assisted development on complex,
+high-load, tangled systems** — the kind where an agent ships a plausible diff
+every few minutes and locally-reasonable changes quietly break global
+invariants. Run after run, the same failures recurred: confident findings with
+no evidence, critical risks laundered by good vibes, refuted hypotheses
+re-proposed, architecture drifting one small commit at a time. The lenses, the
+0–10 scale, the score-to-severity mapping, the anti-averaging rules, and the
+evidence-first pipeline are what survived that pressure. **It is built for the
+way software is written now — with AI in the loop.**
 
 ## Status
 
-**v0.1.0.** The protocol layer — docs, 28 lenses, templates, schemas,
+**v0.1.1.** The protocol layer — docs, 28 lenses, templates, schemas,
 prompts, skill, examples — is usable as-is, and the `invairiant` CLI ships as
 a working reference implementation (scaffold · collect · validate · render ·
-gate · audit memory) with CI dogfooding it. PyPI publishing and audit-history
-dashboards remain roadmap. Treat the [schemas](schemas/) as the stable
-contract.
+gate · audit memory) with CI dogfooding it. What's next (PyPI, a GitHub Action,
+more case studies — **no new lenses**) is in [ROADMAP.md](ROADMAP.md). Treat the
+[schemas](schemas/) as the stable contract.
 
 ## License
 

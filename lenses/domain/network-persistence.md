@@ -29,8 +29,8 @@ itself a signature.
   blocking adversary — this lens must not be forced onto it; use the
   core operational lenses instead.
 
-Extracted and generalized from the audit canon of a real
-persistent-mesh network project.
+Distilled from real-world practice building and auditing persistent-mesh
+and overlay networks.
 
 ## Core Questions
 
