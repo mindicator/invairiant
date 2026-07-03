@@ -37,8 +37,9 @@ invairiant ci-gate report.json                      # 4 · exit 1 on open S0/S1
 
 Per-agent skill setup (Claude Code · Codex · Cursor):
 [skill/README.md](skill/README.md). Full worked run with real output:
-[docs/demo.md](docs/demo.md). No tooling at all? Run the protocol by hand from
-[`examples/`](examples/) + [docs/audit-workflow.md](docs/audit-workflow.md).
+[docs/demo.md](docs/demo.md). Gate PRs in CI with the
+[GitHub Action](docs/github-action.md). No tooling at all? Run the protocol by
+hand from [`examples/`](examples/) + [docs/audit-workflow.md](docs/audit-workflow.md).
 
 ## No evidence. No finding.
 
@@ -202,6 +203,7 @@ cli/                     ③ the narrow invairiant CLI (serves the audit)
 case-studies/            4 illustrative worked audits (diff → lenses → report)
 examples/                minimal-webapp · infra-service · ai-agent-system
 .invairiant/history/     committed, sanitized audit memory (record / history)
+action.yml               reusable GitHub Action — validate + gate on S0/S1
 .github/workflows/       framework self-validation
 ```
 

@@ -15,7 +15,8 @@ core packs.
 
 **Packaging & distribution**
 - Publish the `invairiant` CLI to PyPI (`pip install invairiant`).
-- A reusable GitHub Action wrapping `collect → validate-report → ci-gate`.
+- Publish the GitHub Action to the Marketplace (the `action.yml` already works
+  via `uses: mindicator/invairiant@<ref>`).
 
 **Evidence base**
 - More worked case studies across project types (SaaS, data platform, infra),
@@ -44,3 +45,5 @@ core packs.
 - Unit tests for the CLI (55) *(Unreleased → v0.1.x)*.
 - CLI robustness — repo-root memory resolution, bounded `collect` on large
   repos, hardened secret redaction (CLOSE-001/002) *(Unreleased → v0.1.x)*.
+- A reusable **GitHub Action** (`action.yml`) — validate + render summary +
+  gate on S0/S1 *(Unreleased → v0.1.x)*.

@@ -1,0 +1,70 @@
+name: "invAIriant audit gate"
+description: "Validate an invAIriant audit report against the schemas + protocol rules, render it into the job summary, and fail CI on open S0/S1 findings."
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  report:
+    description: "Path (in your repo) to the audit report JSON to validate and gate on."
+    required: false
+    default: ""
+  max-severity:
+    description: "ci-gate blocking level: S1 (default, blocks S0+S1) or S0 (blocks only S0)."
+    required: false
+    default: "S1"
+  collect:
+    description: 'If "true", also generate an evidence bundle at invairiant-bundle.json (for artifact upload / an agent step).'
+    required: false
+    default: "false"
+  range:
+    description: "git range for collect, e.g. origin/main...HEAD (empty = working-tree changes)."
+    required: false
+    default: ""
+  invairiant-ref:
+    description: "Git ref of mindicator/invairiant to run (tag/branch/sha)."
+    required: false
+    default: "v0.1.1"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+
+    - name: Fetch the invAIriant framework
+      shell: bash
+      run: |
+        set -euo pipefail
+        git clone --depth 1 --branch "${{ inputs.invairiant-ref }}" \
+          https://github.com/mindicator/invairiant "$RUNNER_TEMP/invairiant"
+        echo "INVAIRIANT_HOME=$RUNNER_TEMP/invairiant" >> "$GITHUB_ENV"
+        python -m pip install --quiet jsonschema pyyaml
+
+    - name: Collect evidence bundle (optional)
+      if: ${{ inputs.collect == 'true' }}
+      shell: bash
+      run: |
+        python "$INVAIRIANT_HOME/cli/invairiant.py" collect \
+          --range "${{ inputs.range }}" --out invairiant-bundle.json
+
+    - name: Validate report (schema + semantic)
+      if: ${{ inputs.report != '' }}
+      shell: bash
+      run: python "$INVAIRIANT_HOME/cli/invairiant.py" validate-report "${{ inputs.report }}"
+
+    - name: Render report into the job summary
+      if: ${{ always() && inputs.report != '' }}
+      shell: bash
+      run: |
+        python "$INVAIRIANT_HOME/cli/invairiant.py" render-comment "${{ inputs.report }}" \
+          >> "$GITHUB_STEP_SUMMARY" || true
+
+    - name: Gate on open S0/S1
+      if: ${{ inputs.report != '' }}
+      shell: bash
+      run: |
+        python "$INVAIRIANT_HOME/cli/invairiant.py" ci-gate "${{ inputs.report }}" \
+          --max-severity "${{ inputs.max-severity }}"

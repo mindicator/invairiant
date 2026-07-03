@@ -7,6 +7,11 @@ follows Keep a Changelog; versions track the protocol.
 
 ### Added
 
+- **GitHub Action** ([`action.yml`](action.yml)) — a composite action that
+  validates an audit report (schema + semantic), renders it into the job
+  summary, and **gates CI on open S0/S1** findings. Use it as
+  `uses: mindicator/invairiant@v0.1.1`. Docs:
+  [`docs/github-action.md`](docs/github-action.md).
 - **Unit-test suite** (`tests/`, 55 tests) for the CLI — parser dispatch,
   `validate-report` semantic-linter rules, secret redaction, `record`
   idempotency + sanitization, claim-key matching, `history` trends, repo-root
