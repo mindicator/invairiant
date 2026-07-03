@@ -15,14 +15,14 @@
   ],
   "config_ref": "invairiant.config.yml",
   "lens_scores": [
-    { "pack": "core", "lens": "cormen", "score": 6, "verdict": "the 'own-cert SNI ≠ cover SNI' invariant is not enforced; correctness depends on an incidental wildcard SAN and the guard's fail-closed docstring is false (CRT-002)" },
-    { "pack": "security-safety", "lens": "security-threat", "score": 5, "verdict": "on a no-wildcard-SAN node the own-cert family emits a cert/SNI active-probe tell + correlation channel (CRT-001)" },
-    { "pack": "core", "lens": "parnas", "score": 6, "verdict": "the SNI decision is split across two shell files with a silent fallback and no typed owner (CRT-003)" },
-    { "pack": "domain", "lens": "network-persistence", "score": 6, "verdict": "indistinguishability regresses for the affected node class (CRT-001)" }
+    { "pack": "core", "lens": "cormen", "score": 6, "verdict": "the 'own-cert SNI ≠ cover SNI' invariant is not enforced; correctness depends on an incidental wildcard SAN and the guard's fail-closed docstring is false (PMT-002)" },
+    { "pack": "security-safety", "lens": "security-threat", "score": 5, "verdict": "on a no-wildcard-SAN node the own-cert family emits a cert/SNI active-probe tell + correlation channel (PMT-001)" },
+    { "pack": "core", "lens": "parnas", "score": 6, "verdict": "the SNI decision is split across two shell files with a silent fallback and no typed owner (PMT-003)" },
+    { "pack": "domain", "lens": "network-persistence", "score": 6, "verdict": "indistinguishability regresses for the affected node class (PMT-001)" }
   ],
   "findings": [
     {
-      "id": "CRT-001",
+      "id": "PMT-001",
       "severity": "S1",
       "lens": "security-threat",
       "category": "DISTINGUISHABLE_TRANSPORT",
@@ -41,7 +41,7 @@
       "verification": { "verified_by": "fable-agent", "method": "read the fallback line and the SNI guard; traced the self-signed-cert path; confirmed the guard rejects only empty", "notes": "escalates to S0 on affected nodes; held at S1 because live nodes use a real wildcard cert (see rejected-hypotheses)" }
     },
     {
-      "id": "CRT-002",
+      "id": "PMT-002",
       "severity": "S2",
       "lens": "cormen",
       "claim": "The invariant that an own-cert family's SNI must never equal the cover SNI is not enforced; correctness depends on whether a wildcard SAN incidentally exists, and the guard's stated fail-closed property is false.",
@@ -57,7 +57,7 @@
       "affected_components": ["transport/render_server.sh"]
     },
     {
-      "id": "CRT-003",
+      "id": "PMT-003",
       "severity": "S3",
       "lens": "parnas",
       "claim": "The SNI-derivation decision is spread across two shell files with a silent fallback and no single typed owner.",
@@ -74,18 +74,18 @@
     }
   ],
   "hypotheses": [
-    { "text": "All production nodes are exposed by this tell.", "lens": "security-threat", "rejected_reason": "Refuted — live nodes use a real wildcard cert, so the wildcard-SAN branch derives tls_sni and the cover fallback is never taken. Only nodes on a built-in self-signed cert (no wildcard SAN) are affected. This is why CRT-001 is held at S1, not S0." },
+    { "text": "All production nodes are exposed by this tell.", "lens": "security-threat", "rejected_reason": "Refuted — live nodes use a real wildcard cert, so the wildcard-SAN branch derives tls_sni and the cover fallback is never taken. Only nodes on a built-in self-signed cert (no wildcard SAN) are affected. This is why PMT-001 is held at S1, not S0." },
     { "text": "The SNI guard already prevents the tell (it 'fails closed').", "lens": "cormen", "rejected_reason": "Refuted — the guard rejects only an EMPTY tls_sni; the cover fallback yields a non-empty value that passes. The docstring's fail-closed claim does not match the code." }
   ],
   "summary": {
     "verdict": "pass_with_conditions",
-    "executive_summary": "The renderer's genuine-TLS SNI fallback (|| tls_sni=$cover) makes the own-cert family present its own certificate under the cover domain's SNI on nodes without a wildcard cert — a cert/SNI active-probe tell and a cross-family correlation channel (CRT-001, S1). The invariant is not enforced and the guard's fail-closed docstring is false (CRT-002). A diff-level reviewer approves a documented, working fallback; the lenses do not. Live nodes with real wildcard certs are unaffected, holding CRT-001 at S1. ci-gate blocks the merge until fixed.",
+    "executive_summary": "The renderer's genuine-TLS SNI fallback (|| tls_sni=$cover) makes the own-cert family present its own certificate under the cover domain's SNI on nodes without a wildcard cert — a cert/SNI active-probe tell and a cross-family correlation channel (PMT-001, S1). The invariant is not enforced and the guard's fail-closed docstring is false (PMT-002). A diff-level reviewer approves a documented, working fallback; the lenses do not. Live nodes with real wildcard certs are unaffected, holding PMT-001 at S1. ci-gate blocks the merge until fixed.",
     "strongest_lens": "cormen",
     "weakest_lens": "security-threat",
-    "weakest_reason": "the emitted config is distinguishable under active probing on the affected node class (CRT-001)",
+    "weakest_reason": "the emitted config is distinguishable under active probing on the affected node class (PMT-001)",
     "required_actions": [
-      { "action": "Drop the cover fallback; leave tls_sni empty when undecidable (guard fail-closes); reject tls_sni == cover_sni.", "finding_ids": ["CRT-001", "CRT-002"], "owner": "renderer owner", "blocking": true },
-      { "action": "Move SNI derivation/validation behind a single typed contract.", "finding_ids": ["CRT-003"], "owner": "renderer owner", "blocking": false }
+      { "action": "Drop the cover fallback; leave tls_sni empty when undecidable (guard fail-closes); reject tls_sni == cover_sni.", "finding_ids": ["PMT-001", "PMT-002"], "owner": "renderer owner", "blocking": true },
+      { "action": "Move SNI derivation/validation behind a single typed contract.", "finding_ids": ["PMT-003"], "owner": "renderer owner", "blocking": false }
     ]
   }
 }

@@ -1,0 +1,54 @@
+# REDACTED from real code. This is a sanitized snippet of the PRE-FIX state a
+# reviewer saw: a raw completion from a hosted LLM flows straight into the
+# publish action with no deterministic gate between the model and the public
+# post. The project and the third-party social platform are withheld; file
+# paths, identifiers, and strings are generic stand-ins. No real names, model
+# ids, account handles, tokens, or secrets appear. The finding is OPEN — this
+# is the code under review, not a fix.
+
+diff --git a/services/auto_publish.py b/services/auto_publish.py
+--- a/services/auto_publish.py
++++ b/services/auto_publish.py
+@@ async def run_auto_publish(account, upstream):
+ 	# Assemble the prompt from the upstream post. NOTE: upstream is untrusted
+ 	# content — interpolating it here makes it a prompt-injection vector into an
+ 	# irreversible public action (see :242-252 for the prompt template).
+ 	prompt = build_prompt(account, upstream)
+
+ 	# Ask the hosted LLM for the post text.
+ 	text = await model_client.complete(prompt)        # :139 — raw model output
+ 	if text is None:                                  # None only on call failure
+ 		return
+
+-	# (no schema validation / allowlist / moderation / length contract / human
+-	#  approval here — the model's text is trusted as-is)
+ 	# Publish it. The only thing between "model emitted text" and "it is live"
+ 	# is the post-frequency counter enforced downstream in the action pipeline.
+ 	await action_pipeline.publish(                    # :155-166
+ 		account=account,
+ 		content=text,                                 # <-- raw model output, unmodified
+ 	)
+
+diff --git a/services/model_client.py b/services/model_client.py
+--- a/services/model_client.py
++++ b/services/model_client.py
+@@ async def complete(prompt) -> str | None:
+ 	resp = await _call_hosted_llm(prompt)             # a hosted LLM
+ 	if resp is None:
+ 		return None
+-	# Only transformation applied to model output before it is published:
+-	content = resp.text.strip()[:MAX_LEN]             # :120-128 — strip + truncate
+-	return content                                    # no schema, no allowlist,
+-	                                                  # no content contract
+
+diff --git a/services/action_pipeline.py b/services/action_pipeline.py
+--- a/services/action_pipeline.py
++++ b/services/action_pipeline.py
+@@ async def publish(account, content):               # :74-180
+ 	# Preconditions checked here bound VOLUME and MECHANICS only:
+ 	_require_account_exists(account)                  #  - account existence
+ 	_require_platform_match(account)                  #  - platform match
+ 	async with _concurrency_lock(account):            #  - one publish at a time
+ 		_enforce_rate_limit(account)                  #  - post-frequency counter
+-		# (content is never inspected, validated, bounded, or moderated here)
+ 		await _platform_post(account, content)        # <-- goes live, as-is

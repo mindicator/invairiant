@@ -21,16 +21,16 @@ why it merges.
 family's SNI must never equal the cover SNI.* Is it enforced? No — it holds
 only if a wildcard SAN happens to exist. The guard the comment points to checks
 a *different* property (non-empty), so the stated "fails closed" is false.
-→ `CRT-002`.
+→ `PMT-002`.
 
 **security-threat (the tell).** Follow the fallback to its worst input: a
 self-signed cert with no wildcard SAN. Then `tls_sni = $cover`, and the node
 serves its **own** certificate under the **cover domain's SNI** — a cert/SNI
 mismatch an active prober can see, plus a correlation channel between two
-families that must look unrelated. → `CRT-001`.
+families that must look unrelated. → `PMT-001`.
 
 **parnas (ownership).** A security-critical decision lives in two shell files
-that must agree by hand, with no typed contract owning it. → `CRT-003`.
+that must agree by hand, with no typed contract owning it. → `PMT-003`.
 
 ## The difference in one line
 

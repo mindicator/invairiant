@@ -1,0 +1,82 @@
+# REDACTED diff, from a REAL change. The single-flight backpressure the audit
+# reviews, reduced to its load-bearing lines and stripped of proprietary
+# specifics: generic paths only, no real entity names, no secrets, no hashes,
+# no project name. It shows the mutex + 429 + client abort + unconditional
+# body apply that were ADDED — WITHOUT an idempotency key on the handoff. The
+# constants 950 ms / 0.95 s are kept because they carry the lesson (RTH-001).
+
+diff --git a/web/console.py b/web/console.py
+--- a/web/console.py
++++ b/web/console.py
+@@ wake handoff (listener -> body) @@
++# Single-flight: only one wake handoff in flight at a time. If one is already
++# running, the caller backs off and retries; otherwise POST the decision to
++# the body and abort the fetch after CLIENT_ABORT_MS so a slow body cannot
++# stall the listener.
++CLIENT_ABORT_MS = 950                        # web/console.py:949
++
++def hand_off_wake(decision):
++    if not _inflight.acquire(blocking=False):
++        return Response(status=429)          # body busy — caller backs off + retries
++    try:
++        ctrl = AbortController()
++        timer = set_timeout(ctrl.abort, CLIENT_ABORT_MS)
++        try:
++            # web/console.py:1530 — payload has NO idempotency / decision id
++            resp = fetch(BODY_URL, method="POST",
++                         body=encode({"wake": decision.payload}),
++                         signal=ctrl.signal)
++        finally:
++            clear_timeout(timer)
++        return resp
++    finally:
++        _inflight.release()
++
++# NOTE: ~30 lines up, the sibling "rescue" endpoint already does this right:
++#   web/console.py:1458 -> body=encode({"rescue": r, "idempotency_key": r.id})
++# The wake handoff above simply omits the idempotency_key.
+
+diff --git a/web/server.py b/web/server.py
+--- a/web/server.py
++++ b/web/server.py
+@@ upstream handoff to the body @@
++UPSTREAM_TIMEOUT_S = 0.95                     # web/server.py:100 == 950 ms
++                                             # EXACTLY equal to CLIENT_ABORT_MS:
++                                             # on timeout the caller cannot tell
++                                             # "never applied" from "applied but
++                                             # timed out".
+
+diff --git a/runtime/body.py b/runtime/body.py
+--- a/runtime/body.py
++++ b/runtime/body.py
+@@ def apply_wake(self, msg): @@   # runtime/body.py:55-75
++    # Applies EVERY accepted POST unconditionally — no dedup on a
++    # decision/correlation id. A re-POST, or a POST the client already
++    # abandoned at 950 ms, is applied again.
++    decision = decode(msg)["wake"]
++    self._service.accept(decision)           # -> runtime/service.py:890-896
+
+diff --git a/runtime/service.py b/runtime/service.py
+--- a/runtime/service.py
++++ b/runtime/service.py
+@@ def accept(self, decision): @@   # runtime/service.py:890-896
++    # Per accepted decision: prepend the event and emit the wake signal.
++    # Unconditional — fires once per POST the body accepts, no idempotency
++    # guard, so a duplicate/timed-out handoff double-wakes the body.
++    self._events.insert(0, decision.event)
++    self._wake_signal.set()
+
+diff --git a/tests/test_console.py b/tests/test_console.py
+--- a/tests/test_console.py
++++ b/tests/test_console.py
+@@ new backpressure test @@
++def test_wake_backpressure_busy():
++    # Pre-sets the in-flight flag BY HAND and asserts a 429. Never issues two
++    # concurrent requests; never exercises the 950 ms timeout or the duplicate
++    # apply. Proves the reject branch, not the race.
++    _inflight.acquire(blocking=False)
++    resp = hand_off_wake(a_decision())
++    assert resp.status == 429
++#
++# MISSING: tests/test_console.py::test_wake_backpressure_overlap
++#   (two truly concurrent handoffs + a timeout/duplicate path)  -> RTH-003

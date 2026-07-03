@@ -12,7 +12,7 @@
   <!-- finding -->
   <rect x="36" y="112" width="34" height="22" rx="6" fill="#3d1518" stroke="#f85149"/>
   <text x="53" y="127" fill="#ff7b72" font-size="12" font-weight="700" text-anchor="middle">S1</text>
-  <text x="80" y="128" fill="#c9d1d9" font-size="14.5" font-weight="700">CRT-001</text>
+  <text x="80" y="128" fill="#c9d1d9" font-size="14.5" font-weight="700">PMT-001</text>
   <text x="164" y="128" fill="#8b949e" font-size="13">security-threat · confidence high</text>
 
   <text x="36" y="158" fill="#c9d1d9" font-size="13.5">The genuine-TLS SNI fallback serves the node's own certificate under the</text>
@@ -32,7 +32,7 @@
 
   <!-- gate -->
   <text x="36" y="368" fill="#8b949e" font-size="13.5">$ <tspan fill="#c9d1d9">invairiant ci-gate report.json</tspan></text>
-  <text x="36" y="392" fill="#f85149" font-size="13.5">FAILED: 1 open blocking finding — CRT-001 [S1]</text>
+  <text x="36" y="392" fill="#f85149" font-size="13.5">FAILED: 1 open blocking finding — PMT-001 [S1]</text>
   <rect x="36" y="404" width="120" height="22" rx="6" fill="#3d1518" stroke="#f85149"/>
   <text x="96" y="419" fill="#ff7b72" font-size="12.5" text-anchor="middle">exit 1 · blocked</text>
   <text x="172" y="419" fill="#8b949e" font-size="12.5">a generic reviewer passed this PR; invAIriant gates it.</text>

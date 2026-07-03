@@ -56,7 +56,7 @@ $ invairiant render-comment report.json
 
 ## Findings
 
-**CRT-001 (S1, security-threat, confidence high)** — The genuine-TLS SNI
+**PMT-001 (S1, security-threat, confidence high)** — The genuine-TLS SNI
 fallback makes an own-cert family present the node's own certificate under the
 cover domain's SNI on nodes without a wildcard cert — a cert/SNI active-probe
 tell and a cross-family correlation channel.
@@ -73,7 +73,7 @@ tell and a cross-family correlation channel.
 $ invairiant ci-gate report.json; echo exit=$?
 ci-gate: blocking severities ['S0', 'S1']; report verdict: pass_with_conditions
 FAILED: 1 open blocking finding(s):
-  ✗ CRT-001 [S1] The genuine-TLS SNI fallback makes an own-cert family …
+  ✗ PMT-001 [S1] The genuine-TLS SNI fallback makes an own-cert family …
 exit=1
 ```
 

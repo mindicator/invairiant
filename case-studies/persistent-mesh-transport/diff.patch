@@ -1,5 +1,5 @@
 # Illustrative diff — the FIX that invAIriant's finding recommends.
-# The audit below is of the PRE-FIX state (what a reviewer saw); CRT-001's
+# The audit below is of the PRE-FIX state (what a reviewer saw); PMT-001's
 # recommendation is exactly this change. Synthesized from a real, fixed class
 # of defect in persistent-mesh transports; no real project is named.
 

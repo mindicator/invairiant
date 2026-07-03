@@ -1,0 +1,106 @@
+{
+  "title": "invAIriant full-scale audit — low-latency-runtime (wake-handoff single-flight backpressure)",
+  "date": "2026-07-03",
+  "audit_type": "full-scale",
+  "project": { "name": "low-latency-runtime", "type": "realtime-runtime" },
+  "scope": "The listener→body wake handoff over internal HTTP POST and the single-flight backpressure recently added to it (in-flight mutex, 429-busy, client fetch-abort + backoff, one new test). Full-scale pass: the whole core lens block (cormen, parnas, brooks, dijkstra, mcconnell, turing) plus lamport. REAL audit, REDACTED — the project name is withheld and all proprietary specifics are abstracted behind generic paths; the constants (950 ms / 0.95 s) are kept because they carry the lesson. Not in scope: the wake-detection logic upstream of the handoff and the body’s downstream actuation.",
+  "inputs_reviewed": [
+    "the backpressure diff (see diff.patch)",
+    "runtime/body.py:55-75 (the body’s apply path)",
+    "runtime/service.py:890-896 (event prepend + wake-signal per accepted decision)",
+    "web/console.py:949 (CLIENT_ABORT_MS), :1458 (sibling rescue endpoint), :1530 (handoff payload)",
+    "web/server.py:100 (UPSTREAM_TIMEOUT_S)",
+    "the CHANGELOG single-flight entry",
+    "tests/test_console.py (the one new backpressure test)"
+  ],
+  "participants": [
+    "fable-agent (lens passes, verification, severity, synthesis)",
+    "maintainer (owner, gate)"
+  ],
+  "config_ref": "invairiant.config.yml",
+  "lens_scores": [
+    { "pack": "systems", "lens": "lamport", "score": 4, "verdict": "the handoff is serialized but not idempotent: the body applies every POST unconditionally (runtime/body.py:55-75), the payload carries no idempotency id (web/console.py:1530), and the client abort equals the server upstream timeout (950 ms == 0.95 s) so a timed-out handoff can still land a state-changing wake at the body while the caller records failure (RTH-001)" },
+    { "pack": "core", "lens": "cormen", "score": 6, "verdict": "the 'single-flight' invariant is asserted in the CHANGELOG and the one new test but is not enforced against duplicates or timeouts; the at-least-once idempotency mechanism exists ~30 lines away (web/console.py:1458) and was skipped on this handoff (RTH-002)" },
+    { "pack": "core", "lens": "mcconnell", "score": 7, "verdict": "well-constructed change — mutex, 429, client backoff, and a passing test all present and localized — but the one concurrency test pre-sets the in-flight flag by hand and asserts a 429; it exercises the reject branch, not the race (RTH-003)" },
+    { "pack": "core", "lens": "parnas", "score": 8, "verdict": "the listener→body handoff is a clean interface boundary: one HTTP POST across a named seam, the body owns its own apply path, no reach-through into internals (runtime/body.py:55-75, web/console.py:1530)" },
+    { "pack": "core", "lens": "brooks", "score": 8, "verdict": "the two entities have clear, nameable roles — the listener detects and forwards, the body applies — and the change adds no new entity; single coherent story" },
+    { "pack": "core", "lens": "dijkstra", "score": 7, "verdict": "control flow is mostly simple and traceable — acquire mutex, POST, release, 429 on contention — no hidden dispatch; the one subtlety is the equal client/server timeout, which is a silent-ambiguity smell rather than a control-flow tangle (web/console.py:949, web/server.py:100)" },
+    { "pack": "core", "lens": "turing", "score": 8, "verdict": "the backpressure is a real bound: the in-flight mutex plus 429 cap concurrency at one, the client backoff is finite, and the handoff loop terminates — no unbounded retry or 'act until done' loop introduced" }
+  ],
+  "findings": [
+    {
+      "id": "RTH-001",
+      "severity": "S2",
+      "lens": "lamport",
+      "category": "ORDERING_ASSUMPTION",
+      "claim": "The wake handoff is serialized by the single-flight mutex but is not idempotent: on a timeout the client cannot tell 'never applied' from 'applied but timed out', so a timed-out handoff can still land a state-changing wake signal at the body while the listener records failure, with no reconciliation.",
+      "evidence": [
+        { "type": "file_lines", "file": "runtime/body.py", "lines": "55-75", "description": "the body applies every accepted POST unconditionally — there is no dedup on a decision/correlation id, so a duplicate or a late-but-landed POST is applied again" },
+        { "type": "file_lines", "file": "runtime/service.py", "lines": "890-896", "description": "per accepted decision the service prepends an event and emits the wake signal unconditionally — the state-changing side effect fires once per POST the body accepts, with no idempotency guard" },
+        { "type": "file_lines", "file": "web/console.py", "lines": "1530", "description": "the handoff payload carries no message/idempotency id, so the body has nothing to dedup on even if it wanted to" },
+        { "type": "file_lines", "file": "web/console.py", "lines": "949", "description": "CLIENT_ABORT_MS = 950 — the client aborts the fetch at 950 ms" },
+        { "type": "file_lines", "file": "web/server.py", "lines": "100", "description": "UPSTREAM_TIMEOUT_S = 0.95 — the server’s own upstream timeout is 950 ms, EXACTLY equal to the client abort; on a timeout the caller cannot distinguish 'the body never got it' from 'the body applied it but the response was cut off'" }
+      ],
+      "risk": "A timed-out handoff can still deliver a wake signal to the low-latency body (orphaned side effect / double-wake) while the listener records the handoff as failed. Because the caller cannot tell 'never applied' from 'applied but timed out' and nothing reconciles the two records, the runtime can wake the body when its own bookkeeping says it did not — a state divergence with no self-healing path.",
+      "recommendation": "Make the handoff idempotent at least once: attach a decision/correlation (idempotency) id to the payload; have the body dedup on it so a re-POST of the same id is a defined no-op; and make the client abort and the server upstream timeout UNEQUAL (client strictly greater than server) so a timeout unambiguously means 'the server gave up first, nothing applied'. Add a reconciliation for the ambiguous window.",
+      "confidence": "high",
+      "status": "verified",
+      "source": "ai",
+      "affected_components": ["runtime/body.py", "runtime/service.py", "web/console.py", "web/server.py"],
+      "verification": { "verified_by": "fable-agent", "method": "read the body apply path and the service wake-signal emit; confirmed no dedup and no idempotency id on the payload; compared CLIENT_ABORT_MS (950) against UPSTREAM_TIMEOUT_S (0.95) and confirmed they are equal", "notes": "held at S2, not S1: an open next-cycle correctness debt on an internal handoff, not a release blocker — the reject/backpressure path itself works; the gap is the timeout/duplicate branch that the added test never exercises" }
+    },
+    {
+      "id": "RTH-002",
+      "severity": "S2",
+      "lens": "cormen",
+      "category": "FALSE_INVARIANT",
+      "claim": "The 'single-flight' invariant the CHANGELOG and the new test assert is not the invariant the handoff needs: single-flight bounds concurrency to one, but it does not make the handoff idempotent, and the at-least-once idempotency pattern was known and skipped on exactly this endpoint.",
+      "evidence": [
+        { "type": "doc_code_contradiction", "doc": "CHANGELOG (entry frames the change as 'single-flight' backpressure on the wake handoff)", "code": "runtime/body.py:55-75", "description": "the changelog’s 'single-flight' claim implies the handoff is safe against re-delivery, but the body applies every POST unconditionally with no dedup — single-flight serializes, it does not de-duplicate a timed-out-but-landed POST" },
+        { "type": "file_lines", "file": "web/console.py", "lines": "1458", "description": "the SAME file already sends an idempotency_key on a neighboring 'rescue' endpoint ~30 lines away from the handoff payload at :1530 — the at-least-once pattern was available and used elsewhere in this file, and skipped on the wake handoff" },
+        { "type": "file_lines", "file": "web/console.py", "lines": "1530", "description": "the wake-handoff payload carries no idempotency id, unlike its sibling at :1458 — the invariant 'a re-delivered handoff applies at most once' is stated in prose but enforced nowhere" }
+      ],
+      "risk": "A correctness property that is asserted in the changelog and 'proven' by a green test but not actually enforced hides the gap from the next reader: someone triaging a double-wake will trust the 'single-flight' label and look everywhere except the missing idempotency guard. Correctness rests on the handoff never timing out, which is not a design property.",
+      "recommendation": "Enforce the invariant the handoff actually needs (apply-at-most-once per decision id), not just single-flight; add the idempotency_key to the handoff payload to match the sibling rescue endpoint at :1458; and state in the CHANGELOG that the handoff is at-least-once + idempotent, not merely single-flight.",
+      "confidence": "high",
+      "status": "verified",
+      "source": "ai",
+      "affected_components": ["runtime/body.py", "web/console.py"],
+      "verification": { "verified_by": "fable-agent", "method": "cross-read the CHANGELOG single-flight claim against the body apply path; located the idempotency_key send on the sibling endpoint at web/console.py:1458 and confirmed the handoff payload at :1530 omits it", "notes": "the sibling endpoint is the tell: the team knew the at-least-once pattern and did not apply it here" }
+    },
+    {
+      "id": "RTH-003",
+      "severity": "NOTE",
+      "lens": "mcconnell",
+      "category": "MOCKED_AWAY_TEST",
+      "claim": "The only new concurrency test pre-sets the in-flight flag by hand and asserts a 429; it never issues two concurrent requests and never exercises the timeout or duplicate path, so it proves the reject branch, not the race the change exists to handle.",
+      "evidence": [
+        { "type": "missing_test", "test": "tests/test_console.py::test_wake_backpressure_overlap", "description": "no test issues two genuinely concurrent handoff requests, and none exercises the client-abort-at-950 ms / duplicate-delivery path; the one added test sets the busy flag manually and asserts a 429, so the race and the timeout/duplicate branch are untested" }
+      ],
+      "risk": "A green concurrency test that only checks the reject branch gives false confidence: it makes the change look verified against re-delivery when the exact path that produces the RTH-001 divergence — two overlapping handoffs, or one that times out at the equal deadline and still lands — is never run in CI.",
+      "recommendation": "Add tests/test_console.py::test_wake_backpressure_overlap that issues two truly concurrent handoffs (asserting exactly one applies) and a timeout test that forces the 950 ms abort while the body still applies (asserting the duplicate is deduped once RTH-001 is fixed).",
+      "confidence": "high",
+      "status": "verified",
+      "source": "ai",
+      "affected_components": ["tests/test_console.py"],
+      "verification": { "verified_by": "fable-agent", "method": "read the one new backpressure test; confirmed it pre-sets the in-flight flag and asserts a 429 without issuing concurrent requests or exercising the timeout/duplicate path", "notes": "NOTE, not a finding with mandatory action — the fix is bundled into the RTH-001 required action; recorded so the missing coverage is not mistaken for coverage" }
+    }
+  ],
+  "hypotheses": [
+    { "text": "The single-flight mutex already prevents this — only one handoff is ever in flight, so there is nothing to double-apply.", "lens": "lamport", "rejected_reason": "Refuted — the mutex prevents CONCURRENT handoffs, not DUPLICATE or TIMED-OUT-BUT-LANDED ones. Single-flight bounds concurrency to one; it does nothing about a POST that the client abandons at 950 ms while the body still applies it (runtime/body.py:55-75), which lands a wake the caller has already recorded as failed. Serialization is not idempotency." },
+    { "text": "The 950 ms client abort leaves enough margin below the server timeout that the ambiguous 'applied but timed out' window is negligible.", "lens": "lamport", "rejected_reason": "Refuted — there is no margin: CLIENT_ABORT_MS = 950 (web/console.py:949) is EXACTLY equal to UPSTREAM_TIMEOUT_S = 0.95 (web/server.py:100). Equal deadlines maximize, rather than minimize, the window in which the client aborts at the same instant the server is still applying, so 'never applied' and 'applied but timed out' are indistinguishable precisely when it matters." },
+    { "text": "This handoff is internal (listener→body on the same host), so at-least-once delivery concerns do not apply — treat it as a local call.", "lens": "cormen", "rejected_reason": "Refuted — two communicating processes over HTTP are already a distributed system regardless of host: the POST can time out, be retried, or land after the client gives up. The team already treats a sibling endpoint this way, sending an idempotency_key at web/console.py:1458; the handoff at :1530 simply omits it. 'It’s local' does not make a networked, timeout-bearing side effect idempotent." }
+  ],
+  "summary": {
+    "verdict": "pass",
+    "executive_summary": "The change adds textbook-looking single-flight backpressure to the listener→body wake handoff — an in-flight mutex, a 429-busy response, a client fetch-abort + backoff, and a new passing test — and it scores well: parnas 8, brooks 8, turing 8, mcconnell 7, dijkstra 7, cormen 6, with a lens average around 7. Yet Lamport (4) files a real correctness finding the diff-level reviewer never saw: the handoff is serialized but NOT idempotent. The body applies every POST unconditionally (runtime/body.py:55-75), the payload carries no idempotency id (web/console.py:1530), and the client abort equals the server upstream timeout (CLIENT_ABORT_MS = 950 == UPSTREAM_TIMEOUT_S = 0.95), so a timed-out handoff can still land a state-changing wake at the body while the listener records failure — with no reconciliation (RTH-001). The 'single-flight' invariant the CHANGELOG and the one test assert is not the invariant the handoff needs, and the at-least-once idempotency_key pattern already lives ~30 lines away on a sibling endpoint (web/console.py:1458) and was skipped here (RTH-002); the one concurrency test pre-sets the busy flag and asserts a 429, never exercising the race or the timeout path (RTH-003). This is the anti-averaging lesson on real code: the average lens score is ~7 and the verdict is pass, yet depth (Lamport) surfaces a correctness defect that breadth (a high average) never would — a pass is NOT a clean bill of health. The verdict is pass because both open findings are S2/NOTE next-cycle debt on an internal handoff, non-blocking; they are recorded as required actions, not release gates.",
+    "strongest_lens": "parnas",
+    "weakest_lens": "lamport",
+    "weakest_reason": "the handoff is serialized but not idempotent — no dedup on the body, no idempotency id on the payload, and an equal client/server timeout that makes 'never applied' indistinguishable from 'applied but timed out' (RTH-001)",
+    "required_actions": [
+      { "action": "Make the handoff idempotent at least once: attach a decision/correlation id to the payload, dedup on it at the body so a re-POST is a defined no-op, and add a reconciliation for the ambiguous timeout window.", "finding_ids": ["RTH-001", "RTH-002"], "owner": "OWNER?", "blocking": false },
+      { "action": "Make the client abort and the server upstream timeout UNEQUAL (client strictly greater than server) so a timeout unambiguously means nothing was applied.", "finding_ids": ["RTH-001"], "owner": "OWNER?", "blocking": false },
+      { "action": "Add a real two-concurrent-request test plus a timeout/duplicate test (tests/test_console.py::test_wake_backpressure_overlap) that assert exactly one apply and a deduped duplicate.", "finding_ids": ["RTH-003"], "owner": "OWNER?", "blocking": false }
+    ]
+  }
+}

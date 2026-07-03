@@ -50,17 +50,17 @@ Three lenses converge:
 
 - **cormen** — the invariant *own-cert SNI ≠ cover SNI* is not enforced;
   correctness depends on whether a wildcard SAN incidentally exists, and the
-  guard's stated fail-closed property is false (`CRT-002`).
+  guard's stated fail-closed property is false (`PMT-002`).
 - **security-threat** — the emitted config is distinguishable under active
-  probing and creates a correlation channel (`CRT-001`).
+  probing and creates a correlation channel (`PMT-001`).
 - **parnas / network-persistence** — a security-critical SNI decision lives in
-  scattered shell with a silent fallback and no typed owner (`CRT-003`).
+  scattered shell with a silent fallback and no typed owner (`PMT-003`).
 
 ## Outcome
 
-Verdict **pass_with_conditions** — one S1 (`CRT-001`) blocks release until
+Verdict **pass_with_conditions** — one S1 (`PMT-001`) blocks release until
 fixed. `invairiant ci-gate` on this report **exits non-zero**, so the merge is
-gated. `CRT-001`'s recommendation is exactly [`diff.patch`](diff.patch): drop
+gated. `PMT-001`'s recommendation is exactly [`diff.patch`](diff.patch): drop
 the cover fallback, leave `tls_sni` empty when no own-cert domain is derivable
 (so the guard genuinely fail-closes), and additionally reject
 `tls_sni == cover_sni`.

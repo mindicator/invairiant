@@ -29,4 +29,4 @@ risk_assets:
 severity_policy:
   low_score_threshold: 6.0
   critical_domain_threshold: 5.0
-  id_prefix: CRT
+  id_prefix: PMT

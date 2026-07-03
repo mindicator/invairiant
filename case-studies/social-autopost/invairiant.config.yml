@@ -1,0 +1,69 @@
+# invAIriant config — case study: content-automation tool that auto-publishes LLM text
+# Validates against ../../schemas/invairiant.config.schema.json
+# REAL audit — REDACTED. The project and the third-party social platform are
+# withheld and all proprietary specifics are abstracted. Generic file paths
+# below stand in for the real modules; no real names, ids, or secrets appear.
+
+project:
+  name: social-autopost
+  type: ai-agent-system
+  description: >
+    A content-automation tool (name and platform withheld). An autonomous
+    background loop takes a raw completion from a hosted LLM and publishes it
+    directly as a public post on a third-party social platform, under a
+    managed account. There is no deterministic gate between the model output
+    and the publish call — only a post-frequency counter.
+
+canonical_docs:
+  - docs/pipelines.md
+  - AGENT_PROMPT.md
+
+mandatory_lenses:
+  - turing
+  - oracle-boundary
+  - security-threat
+  - leveson
+  - mcconnell
+
+critical_lenses:
+  - oracle-boundary
+  - leveson
+
+risk_assets:
+  - reputation of the managed account and its owner
+  - integrity of what is published under a managed identity
+  - standing on the third-party social platform (rate/abuse policy, shadowban)
+  - trust boundary between untrusted upstream content and an irreversible public action
+
+evidence:
+  require_file_or_diff_reference: true
+  allow_observations_without_evidence: true
+  allow_findings_without_evidence: false
+
+severity_policy:
+  low_score_threshold: 6.0
+  critical_domain_threshold: 5.0
+  id_prefix: SAP
+
+named_categories:
+  - id: UNVALIDATED_ORACLE_OUTPUT
+    default_severity: S1
+    description: >
+      Raw model output reaches an external side effect (a mutation, an API
+      call, a published artifact) with no deterministic gate — no schema
+      validation, no allowlist, no bounds/format contract, no human approval —
+      between the model and the effect. The effective policy for that effect is
+      whatever the model emits.
+    escalates_to: S0
+    escalation_condition: >
+      The model output is reachable from untrusted input (e.g. a prompt-injection
+      vector) AND the resulting action is public and irreversible.
+
+audit:
+  report_dir: docs/audits
+  cadence:
+    tactical: weekly
+    full_scale: every 6-8 weeks
+
+evidence_adapters:
+  - pytest

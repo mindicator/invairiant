@@ -1,0 +1,43 @@
+# Scope config for the low-latency-runtime case study.
+# REAL audit, REDACTED: the project name is withheld and all proprietary
+# specifics are abstracted behind generic paths. The finding is OPEN.
+project:
+  name: low-latency-runtime
+  type: realtime-runtime
+  description: >
+    A low-latency runtime (name withheld). A "listener" entity detects a wake
+    event and hands it off to a separate low-latency "body" process over an
+    internal HTTP POST. A recent commit added single-flight backpressure to the
+    handoff (in-flight mutex, 429-busy, client fetch-abort + backoff, one new
+    passing test). This is a full-scale audit of the core lens block plus the
+    Lamport lens over that handoff path.
+
+canonical_docs:
+  - runtime/body.py
+  - runtime/service.py
+  - web/console.py
+  - web/server.py
+  - CHANGELOG
+
+mandatory_lenses:
+  - cormen
+  - parnas
+  - brooks
+  - dijkstra
+  - mcconnell
+  - turing
+  - lamport
+
+critical_lenses:
+  - lamport
+  - cormen
+
+risk_assets:
+  - handoff correctness (no orphaned or double-applied wake signal)
+  - state consistency between the listener's record and the body's applied state
+  - low-latency responsiveness of the body process
+
+severity_policy:
+  low_score_threshold: 6.0
+  critical_domain_threshold: 5.0
+  id_prefix: RTH

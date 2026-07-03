@@ -137,23 +137,30 @@ it consumes.
 ## See it catch what a reviewer misses
 
 <div align="center">
-<img src="assets/pr-comment.svg" alt="Example invAIriant PR-audit comment: verdict pass_with_conditions, an S1 finding CRT-001 with evidence and fix, a kept rejected hypothesis, and ci-gate exiting 1 to block the merge" width="88%">
+<img src="assets/pr-comment.svg" alt="Example invAIriant PR-audit comment: verdict pass_with_conditions, an S1 finding PMT-001 with evidence and fix, a kept rejected hypothesis, and ci-gate exiting 1 to block the merge" width="88%">
 </div>
 
-Four worked [**case studies**](case-studies/) — illustrative, each modelling a
-real defect class — show the diff, the chosen lenses, the verified findings,
-the *kept* rejected hypotheses, and a side-by-side of what a generic AI
-reviewer said versus what the lens caught:
+Six worked [**case studies**](case-studies/) span the range — quick PR reviews
+through a **full-scale** audit, findings **open** and **fixed**, sources **real
+(redacted)** and illustrative. Two are drawn from real private codebases (names
+and specifics withheld):
 
-- [**persistent-mesh-transport**](case-studies/persistent-mesh-transport/)
+- [**low-latency-runtime**](case-studies/low-latency-runtime/) *(real · full-scale)*
+  — a "single-flight" backpressure that looks like textbook engineering but
+  isn't idempotent; **avg lens score ~7, verdict pass — yet Lamport (4) files a
+  real correctness finding the reviewer never saw.**
+- [**social-autopost**](case-studies/social-autopost/) *(real · PR)* — raw model
+  output auto-published to a live platform with no content gate; every guard
+  protects volume, none protects content.
+- [**persistent-mesh-transport**](case-studies/persistent-mesh-transport/) *(fixed)*
   — a documented "fail-closed" TLS fallback that actually ships an active-probe
   tell; the finding's recommendation *is* the fix.
 - [**ai-agent-refund-bot**](case-studies/ai-agent-refund-bot/) — model output
-  moves customer money with no cap or validation (S0).
+  moves customer money with no cap or validation.
 - [**generated-typescript-api**](case-studies/generated-typescript-api/) — one
-  near-duplicate handler silently drops an authz check (S1).
+  near-duplicate handler silently drops an authz check.
 - [**p2p-network-transport-change**](case-studies/p2p-network-transport-change/)
-  — an ordering assumption plus a distinguishable handshake fingerprint (S1).
+  — an ordering assumption plus a distinguishable handshake fingerprint.
 
 ## Evidence rules, in one screen
 
@@ -200,7 +207,7 @@ schemas/                 finding · audit-report · lens · config ·
 prompts/                 lens-auditor · evidence-verifier ·
                          severity-classifier · report-synthesizer
 cli/                     ③ the narrow invairiant CLI (serves the audit)
-case-studies/            4 illustrative worked audits (diff → lenses → report)
+case-studies/            6 worked audits — 2 real (redacted) + 4 illustrative
 examples/                minimal-webapp · infra-service · ai-agent-system
 .invairiant/history/     committed, sanitized audit memory (record / history)
 action.yml               reusable GitHub Action — validate + gate on S0/S1

@@ -7,6 +7,13 @@ follows Keep a Changelog; versions track the protocol.
 
 ### Added
 
+- **Two real (redacted) case studies** (`case-studies/`): `low-latency-runtime`
+  — a **full-scale** audit scoring the whole core lens block + Lamport, where a
+  ~7 average and a *pass* verdict still surface a real correctness finding
+  (anti-averaging on real code); and `social-autopost` — a focused PR audit of
+  raw model output auto-published with no content gate. Both from private
+  codebases with names and specifics withheld. The case set now spans the
+  depth × source × status range (see `case-studies/README.md`).
 - **GitHub Action** ([`action.yml`](action.yml)) — a composite action that
   validates an audit report (schema + semantic), renders it into the job
   summary, and **gates CI on open S0/S1** findings. Use it as

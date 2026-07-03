@@ -1,0 +1,86 @@
+{
+  "title": "invAIriant PR audit — social-autopost (auto-publish of raw LLM output) [REDACTED]",
+  "date": "2026-07-03",
+  "audit_type": "pr",
+  "project": { "name": "social-autopost", "type": "ai-agent-system" },
+  "scope": "Focused PR audit of the auto-publish path: an autonomous background loop that takes a raw completion from a hosted LLM and publishes it as a public post on a third-party social platform, and the action pipeline that carries it there. Two lenses scored in depth (oracle-boundary, leveson) with turing as supporting; other mandatory lenses out of scope for this PR. REAL finding, REDACTED: the project and platform are withheld and the file paths are generic stand-ins for the real modules. Finding is OPEN (not fixed).",
+  "inputs_reviewed": [
+    "services/auto_publish.py (the LLM-to-publish path)",
+    "services/model_client.py (hosted-LLM call)",
+    "services/action_pipeline.py (the publish action + its validations)",
+    "services/monitor.py (the autonomous background loop)",
+    "tests/test_services.py (auto-publish service tests)",
+    "a docs/ module doc describing the sibling pipeline",
+    "the redacted diff (see diff.patch)"
+  ],
+  "participants": [
+    "fable-agent (lens passes, verification, severity, synthesis)",
+    "maintainer (owner, gate)"
+  ],
+  "config_ref": "invairiant.config.yml",
+  "lens_scores": [
+    { "pack": "ai-generated-code", "lens": "oracle-boundary", "score": 2, "verdict": "model output reaches an external publish with no validation between; there is no boundary artifact at all — nothing written about what the model may decide and no deterministic disposition of what it emits (SAP-001)", "evidence_refs": ["SAP-001"] },
+    { "pack": "security-safety", "lens": "leveson", "score": 3, "verdict": "an autonomous, irreversible public action with unbounded authority per run: no content precondition at execution time, no human override on the executing path, and no effect feedback — docs even note posts can be silently shadowbanned with no auto-detection (SAP-002)", "evidence_refs": ["SAP-002"] },
+    { "pack": "core", "lens": "turing", "score": 4, "verdict": "probabilistic output is treated as truth: the model's text is published as-is and the garbage/empty/injected path is undefined and untested, so there is no defined system state for 'the model emitted something unsafe'", "evidence_refs": ["SAP-001", "services/auto_publish.py:139", "services/model_client.py:120-128", "tests/test_services.py"] }
+  ],
+  "findings": [
+    {
+      "id": "SAP-001",
+      "severity": "S1",
+      "lens": "oracle-boundary",
+      "category": "UNVALIDATED_ORACLE_OUTPUT",
+      "claim": "A raw completion from a hosted LLM is auto-published as a public post on a third-party social platform with no deterministic gate — no schema validation, no allowlist, no content moderation, no length/format contract, and no human approval — between the model output and the publish call.",
+      "evidence": [
+        { "type": "file_lines", "file": "services/auto_publish.py", "lines": "139", "description": "the raw model text is taken and, at :155-166, passed unmodified into the publish action; nothing between the model call and the publish inspects, validates, bounds, or moderates the content" },
+        { "type": "file_lines", "file": "services/model_client.py", "lines": "120-128", "description": "the hosted-LLM client returns the model content only stripped and truncated (and None on failure); it applies no schema, no allowlist, and no content contract — this is the only transformation the text receives before publication" },
+        { "type": "file_lines", "file": "services/action_pipeline.py", "lines": "74-180", "description": "the publish action validates account existence, platform match, a concurrency lock, and rate limits, but never inspects the content it is about to publish — every guard is about VOLUME and MECHANICS, none about WHAT is posted" },
+        { "type": "file_lines", "file": "services/auto_publish.py", "lines": "242-252", "description": "the upstream post text is interpolated directly into the prompt, so untrusted upstream content is a prompt-injection vector into an irreversible public action; the model output the gate would need to catch is itself attacker-influenceable" },
+        { "type": "doc_code_contradiction", "doc": "docs/pipelines.md (documents a SIBLING pipeline as deliberately deterministic, no-LLM, and human-approved — 'unit coverage asserts no GPT dependency')", "code": "services/auto_publish.py:139,155-166", "description": "this pipeline does the exact opposite of its documented sibling — unreviewed LLM text published autonomously — and no doc marks the difference; the project's own written standard for a public-writing pipeline is determinism + human approval, which this path silently violates" },
+        { "type": "missing_test", "test": "tests/test_services.py", "description": "the auto-publish service's tests exercise only no-op paths (no configs present / feature disabled / target account not found); the publish path itself is never exercised, and no test feeds empty, oversized, hostile, or prompt-injected model output through to the publish boundary" }
+      ],
+      "risk": "There is no boundary artifact at all — nothing written down about what the model may decide, and no deterministic disposition of what it emits — so the effective content policy for a public identity is 'whatever the model outputs today'. A model regression, a bad completion, or a crafted upstream post publishes unsafe, off-brand, or attacker-chosen text under the managed account, publicly and irreversibly, with no chance to intervene. This trends toward S0 rather than staying a contained S1 because the prompt-injection vector (services/auto_publish.py:242-252) makes the unsafe output reachable from untrusted input AND the action is public and irreversible — the escalation condition for UNVALIDATED_ORACLE_OUTPUT; it is held at S1 here only because the audit has not demonstrated a concrete injection-to-publish exploit end to end.",
+      "recommendation": "Insert a deterministic gate between the model and the publish call: schema/allowlist validation plus an explicit length/format contract, and a human-approval (or auto-block) step before anything is published. Treat the model's score and text as a candidate, never as truth. Add tests that feed empty, oversized, hostile, and prompt-injected model output through to the (mocked) publish boundary and assert it is blocked. Write down the boundary — which decisions the model may make and which stay deterministic — and mark, in the docs, how this pipeline differs from its deterministic sibling.",
+      "confidence": "high",
+      "status": "verified",
+      "source": "hybrid",
+      "affected_components": ["services/auto_publish.py", "services/model_client.py", "services/action_pipeline.py"],
+      "verification": { "verified_by": "fable-agent", "method": "read the model-to-publish path and the action pipeline's validations; confirmed no content inspection between them; read the prompt-assembly site and confirmed upstream text is interpolated; cross-read the module doc's sibling-pipeline claim; read the service tests and confirmed only no-op paths are covered", "notes": "escalation condition (untrusted input reaches an irreversible public action) is present via the injection vector; held at S1 pending a demonstrated end-to-end exploit, but the risk narrative records the S0 trend" }
+    },
+    {
+      "id": "SAP-002",
+      "severity": "S2",
+      "lens": "leveson",
+      "claim": "The auto-publish loop wields unbounded automation authority over an irreversible public action: there is no human override on the executing path, no content precondition enforced at execution time, and no feedback confirming the effect of what it published.",
+      "evidence": [
+        { "type": "file_lines", "file": "services/monitor.py", "lines": "88-95", "description": "the publish is driven by an autonomous background loop (not a manual or API trigger); nothing on this path waits for a human, so 'a human reviews it before it posts' is not a control that exists in the loop" },
+        { "type": "file_lines", "file": "services/action_pipeline.py", "lines": "74-180", "description": "the only preconditions checked at execution time are account existence, platform match, a concurrency lock, and rate limits — all of which bound how OFTEN and how MECHANICALLY it posts; none is a content precondition, so the action is issued regardless of whether the text is safe in the current state of the world" },
+        { "type": "doc_code_contradiction", "doc": "docs/pipelines.md (notes that a published post can be silently shadowbanned by the platform)", "code": "services/action_pipeline.py:74-180", "description": "the docs acknowledge a public post can be silently suppressed by the platform, yet the executing path has no effect feedback and no auto-detection of it — the controller acts, then never learns whether the action had the intended effect or was penalized" },
+        { "type": "missing_test", "test": "tests/test_services.py", "description": "no test exercises the composed publish behavior or any override/abort during the autonomous loop; only no-op paths (disabled / no configs / target-not-found) are covered, so the unsafe composition is entirely unexercised" }
+      ],
+      "risk": "Every guard on this path protects volume and mechanics; none protects content or gives an operator a way to stop or reverse a bad post in flight. An unsafe or attacker-chosen post is issued autonomously, publicly, and irreversibly, and because there is no effect feedback the system cannot even tell that the managed account has been penalized or shadowbanned afterward — the operator's model of 'we are posting fine' can drift arbitrarily far from reality.",
+      "recommendation": "Bound the automation's authority with a content precondition enforced at execution time (a deterministic validation/allowlist + length/format contract) and a human-approval or auto-block step before publish; add a real override/kill path on the executing loop, not just in a runbook; add effect feedback (confirm the post's live status, detect suppression) and alarm on divergence; add tests for override-during-loop and for the composed publish behavior under empty/oversized/hostile/injected output.",
+      "confidence": "high",
+      "status": "verified",
+      "source": "ai",
+      "affected_components": ["services/monitor.py", "services/action_pipeline.py"],
+      "verification": { "verified_by": "fable-agent", "method": "read the background loop and confirmed the publish is autonomous with no human in the executing path; read the action pipeline and confirmed all preconditions bound volume/mechanics, not content; cross-read the doc's shadowban note against the absence of effect feedback in code", "notes": "no incident cited; finding rests on the code path and the doc/code contradiction, not on an observed failure" }
+    }
+  ],
+  "hypotheses": [
+    { "text": "The rate limiter / circuit breaker already gates what gets published.", "lens": "oracle-boundary", "rejected_reason": "Refuted — the rate limiter, the circuit breaker, and the concurrency lock (services/action_pipeline.py:74-180) bound how OFTEN and how reliably the loop posts, i.e. VOLUME and MECHANICS. None of them inspects the content, so none is a gate on WHAT is published. A perfectly rate-limited, circuit-broken loop still publishes whatever text the model emitted." },
+    { "text": "A human reviews the content before it posts.", "lens": "leveson", "rejected_reason": "Refuted — the publish is driven by an autonomous background loop (services/monitor.py:88-95), not a manual or API trigger. Nothing on the executing path blocks on human approval, so there is no human-in-the-loop review between the model output and the live post." },
+    { "text": "The model won't emit anything harmful, so a gate is unnecessary.", "lens": "turing", "rejected_reason": "Refuted — there is no basis for treating probabilistic output as safe by construction, and a concrete prompt-injection vector exists: the upstream post text is interpolated into the prompt (services/auto_publish.py:242-252), so untrusted input can steer the completion. 'The model behaves' is a hope, not a control, and here the input is attacker-influenceable." }
+  ],
+  "summary": {
+    "verdict": "pass_with_conditions",
+    "executive_summary": "The auto-publish path takes a raw hosted-LLM completion and publishes it as a public post under a managed account with no deterministic gate in between — no schema validation, allowlist, content moderation, length/format contract, or human approval; the only thing between 'model emitted text' and 'text is live' is a post-frequency counter (SAP-001, S1, oracle-boundary). There is no boundary artifact at all, so the effective content policy is 'whatever the model outputs today', and because the upstream post text is interpolated into the prompt (services/auto_publish.py:242-252), that output is reachable from untrusted input into an irreversible public action — which is why SAP-001 trends toward S0. The loop runs autonomously with no human override on the executing path, no content precondition, and no effect feedback (SAP-002, S2, leveson). The tell is the project's own docs: they loudly document a SIBLING pipeline as deliberately deterministic, no-LLM, and human-approved, while this pipeline does the exact opposite and no doc marks the difference. The service LOOKS defensively engineered — circuit breaker, concurrency lock, rate limiting, human-like delays, logging, passing tests — but every guard protects VOLUME and MECHANICS, none protects CONTENT, so the composed system reliably publishes unsafe text and the safety theater disguises the gap. Finding is OPEN. A diff-level reviewer approves the defensive plumbing; the lenses do not.",
+    "strongest_lens": "leveson",
+    "weakest_lens": "oracle-boundary",
+    "weakest_reason": "model output reaches a public, irreversible publish with no validation and no written boundary; the effective content policy is whatever the model emits (SAP-001)",
+    "required_actions": [
+      { "action": "Add a deterministic validation/allowlist + explicit length/format contract + a human-approval (or auto-block) step before publish; treat the model's score and text as a candidate, not as truth; write down the model-vs-deterministic boundary and mark how this pipeline differs from its deterministic sibling.", "finding_ids": ["SAP-001"], "owner": "OWNER?", "blocking": true },
+      { "action": "Add tests that feed empty, oversized, hostile, and prompt-injected model output through to the (mocked) publish boundary and assert it is blocked; add tests for override/abort during the autonomous loop and for the composed publish behavior.", "finding_ids": ["SAP-001", "SAP-002"], "owner": "OWNER?", "blocking": true },
+      { "action": "Bound the automation's authority on the executing path: enforce a content precondition at execution time, add a real override/kill path (not just a runbook), add effect feedback that confirms the post's live status and detects silent suppression, and alarm on divergence.", "finding_ids": ["SAP-002"], "owner": "OWNER?", "blocking": false }
+    ]
+  }
+}
