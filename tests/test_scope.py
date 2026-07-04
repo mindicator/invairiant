@@ -15,18 +15,40 @@ def _ns(**kw):
     return argparse.Namespace(**d)
 
 
+def _init_git_repo(path):
+    """A hermetic 2-commit git repo so range/commit resolution tests don't
+    depend on the ambient checkout's history depth (CI clones shallow)."""
+    def g(*a):
+        subprocess.run(["git", *a], cwd=path, check=True, capture_output=True, text=True)
+    g("init", "-q")
+    g("config", "user.email", "t@example.com")
+    g("config", "user.name", "t")
+    g("config", "commit.gpgsign", "false")
+    (path / "a.txt").write_text("one\n", encoding="utf-8")
+    g("add", "-A")
+    g("commit", "-q", "-m", "first")
+    (path / "b.txt").write_text("two\n", encoding="utf-8")
+    g("add", "-A")
+    g("commit", "-q", "-m", "second")
+
+
 class TestResolvers:
     def test_working_is_default(self, cli):
         s = cli._resolve_scope(_ns())
         assert s["kind"] == "working" and s["bounded"] is True
 
-    def test_range_inferred_from_flag(self, cli):
+    def test_range_inferred_from_flag(self, cli, tmp_path, monkeypatch):
+        _init_git_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
         s = cli._resolve_scope(_ns(range="HEAD~1..HEAD"))
-        assert s["kind"] == "range" and s["bounded"] and len(s["files"]) >= 1 and s["diff"]
+        assert s["kind"] == "range" and s["bounded"] and s["diff"]
+        assert s["files"] == ["b.txt"]
 
-    def test_commit(self, cli):
+    def test_commit(self, cli, tmp_path, monkeypatch):
+        _init_git_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
         s = cli._resolve_scope(_ns(scope="commit", commit="HEAD"))
-        assert s["kind"] == "commit" and s["diff"] and len(s["files"]) >= 1
+        assert s["kind"] == "commit" and s["diff"] and s["files"] == ["b.txt"]
 
     def test_module_is_bounded_snapshot(self, cli):
         s = cli._resolve_scope(_ns(scope="module", path="cli"))

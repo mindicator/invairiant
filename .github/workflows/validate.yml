@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history — collect/audit works on commit ranges
 
       - name: Set up Python
         uses: actions/setup-python@v5
