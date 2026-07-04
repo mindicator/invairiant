@@ -76,6 +76,22 @@ class TestADR:
         with pytest.raises(cli.ScopeError):
             cli._resolve_scope(_ns(scope="adr", path=str(adr)))
 
+    def test_too_broad_fails_without_narrow(self, cli):
+        # README is a project index referencing most of the repo — not a bounded
+        # decision area. It must fail closed and demand --narrow, not resolve to
+        # ~the whole repo just because each ref is a strict subset.
+        with pytest.raises(cli.ScopeError, match="too broadly"):
+            cli._resolve_scope(_ns(scope="adr", path="README.md"))
+
+    def test_too_broad_recovers_with_narrow(self, cli):
+        s = cli._resolve_scope(_ns(scope="adr", path="README.md", narrow="cli"))
+        assert s["files"] and all(f.startswith("cli/") for f in s["files"])
+
+    def test_broad_limit_is_relative_to_repo_size(self, cli):
+        assert cli._adr_broad_limit(10) == cli._ADR_BROAD_FLOOR      # floor on tiny repos
+        assert cli._adr_broad_limit(1000) == cli._ADR_MAX_SCOPE_FILES  # ceiling on huge repos
+        assert cli._adr_broad_limit(200) == 80                        # 0.4 share in between
+
 
 class TestScopedScanE2E:
     def test_module_bundle_is_bounded(self, cli_path, repo_root, tmp_path):

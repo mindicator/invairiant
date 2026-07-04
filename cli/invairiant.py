@@ -589,7 +589,21 @@ def _repo_tree(files: list = None) -> list:
 # A scope resolver turns a bounded scope (kind + target) into a file set, so
 # `collect` computes the whole bundle OVER that set — bounded, never a general
 # repo search. Only the `repo` scope is (explicitly) unbounded.
-_ADR_MAX_SCOPE_FILES = 200
+#
+# An ADR scope resolves to the code its text references. That must stay a
+# *bounded decision area*, not the whole repo wearing an ADR hat — so we fail
+# closed (require --narrow) when it resolves "too broadly". "Too broad" is
+# relative to repo size (a share of tracked files), with a floor so small repos
+# aren't over-constrained and an absolute ceiling for very large ones.
+_ADR_MAX_SCOPE_FILES = 200   # absolute ceiling (large repos)
+_ADR_BROAD_FRACTION = 0.4    # more than this share of tracked files = too broad
+_ADR_BROAD_FLOOR = 40        # but always allow at least this many (small repos)
+
+
+def _adr_broad_limit(total_tracked: int) -> int:
+    """Max files an ADR may resolve to before it must be narrowed."""
+    return min(_ADR_MAX_SCOPE_FILES,
+               max(_ADR_BROAD_FLOOR, int(_ADR_BROAD_FRACTION * total_tracked)))
 
 
 class ScopeError(Exception):
@@ -703,9 +717,12 @@ def _resolve_scope(args) -> dict:
             raise ScopeError(
                 "ADR references did not resolve to tracked code"
                 + (f" under --narrow '{narrow}'" if narrow else "; re-run with --narrow <path>"))
-        if len(files) > _ADR_MAX_SCOPE_FILES and not narrow:
-            raise ScopeError(f"ADR references resolved too broadly ({len(files)} files); "
-                             "re-run with --narrow <path>")
+        broad_limit = _adr_broad_limit(len(tracked))
+        if not narrow and len(files) > broad_limit:
+            raise ScopeError(
+                f"ADR references resolved too broadly ({len(files)} of {len(tracked)} "
+                f"tracked files, over the {broad_limit}-file bound); re-run with "
+                "--narrow <path> to pin the decision area")
         return {"kind": kind, "target": adr, "files": files, "diff": None, "docs": docs,
                 "bounded": True, "snapshot": True,
                 "note": f"ADR + the code it references ({len(files)} files)"
