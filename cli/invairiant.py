@@ -628,10 +628,108 @@ def _extract_adr_refs(text: str):
     return paths, idents
 
 
+def _remote_name() -> str:
+    """The remote a PR resolver may reach. Fail closed if there is none."""
+    _, out, _ = _run(["git", "remote"])
+    remotes = [r for r in out.split() if r]
+    if not remotes:
+        raise ScopeError("no git remote configured; a PR cannot be resolved — "
+                         "pass --range <base>...<head> instead")
+    return "origin" if "origin" in remotes else remotes[0]
+
+
+def _default_base_ref(remote: str):
+    """The remote's default branch ref (e.g. origin/main), or None."""
+    rc, out, _ = _run(["git", "rev-parse", "--abbrev-ref", f"{remote}/HEAD"])
+    if rc == 0 and "/" in out.strip():
+        return out.strip()
+    for cand in (f"{remote}/main", f"{remote}/master"):
+        if _run(["git", "rev-parse", "--verify", "--quiet", cand])[0] == 0:
+            return cand
+    return None
+
+
+def _resolve_pr(args) -> dict:
+    """Optional PR resolver ADAPTER. Core scopes are pure-local; ONLY --scope pr
+    may reach the remote (gh, or the pull/<n>/head ref). A PR resolves to an
+    ordinary bounded base...head range — the same shape as --scope range. If it
+    cannot be resolved, fail closed and suggest --range; never scan the whole
+    repo."""
+    raw = getattr(args, "pr", None)
+    if not raw:
+        raise ScopeError("--scope pr requires --pr <number>")
+    num = str(raw).lstrip("#").strip()
+    if not num.isdigit():
+        raise ScopeError(f"--pr expects a PR number, got '{raw}'")
+
+    remote = _remote_name()
+    base_name = head_name = head_oid = None
+    resolver = "git"
+
+    # 1) gh, if present: the reliable source of the PR's base/head.
+    if shutil.which("gh"):
+        rc, out, _ = _run(["gh", "pr", "view", num, "--json",
+                           "baseRefName,headRefName,headRefOid"])
+        if rc == 0:
+            try:
+                meta = json.loads(out)
+                base_name = meta.get("baseRefName") or None
+                head_name = meta.get("headRefName") or None
+                head_oid = meta.get("headRefOid") or None
+                resolver = "gh"
+            except Exception:  # noqa: BLE001
+                pass
+
+    # 2) Head object: reuse it if already local (checked-out PR → no network);
+    #    otherwise fetch the pull ref.
+    if head_oid and _run(["git", "cat-file", "-e", f"{head_oid}^{{commit}}"])[0] == 0:
+        head_sha = head_oid
+    else:
+        rc, _, err = _run(["git", "fetch", "--quiet", remote, f"pull/{num}/head"])
+        if rc != 0:
+            raise ScopeError(
+                f"could not fetch PR #{num} from '{remote}' "
+                f"({(err or '').strip()[:100]}); the remote may not be GitHub or "
+                "is unreachable — pass --range <base>...<head> instead")
+        head_sha = _run(["git", "rev-parse", "FETCH_HEAD"])[1].strip()
+    if not head_sha:
+        raise ScopeError(f"PR #{num} head did not resolve — pass --range instead")
+
+    # 3) Base ref (must be local to diff against): gh's base branch, else the
+    #    remote default branch; fetch it if missing.
+    base_ref = f"{remote}/{base_name}" if base_name else _default_base_ref(remote)
+    if not base_ref or _run(["git", "rev-parse", "--verify", "--quiet", base_ref])[0] != 0:
+        if base_name:
+            _run(["git", "fetch", "--quiet", remote, base_name])
+        if not base_ref or _run(["git", "rev-parse", "--verify", "--quiet", base_ref])[0] != 0:
+            raise ScopeError(
+                f"could not resolve the base branch for PR #{num} — pass "
+                "--range <base>...<head> instead")
+
+    # 4) PR is now an ordinary bounded range.
+    rng = f"{base_ref}...{head_sha}"
+    rc, names, err = _run(["git", "diff", "--name-only", rng])
+    if rc != 0:
+        raise ScopeError(f"PR #{num} range '{rng}' did not resolve "
+                         f"({(err or '').strip()[:100]}) — pass --range instead")
+    files = [f for f in names.splitlines() if f.strip()]
+    _, diff, _ = _run(["git", "diff", rng])
+
+    head_disp = head_name or head_sha[:12]
+    return {"kind": "pr", "target": num, "files": files, "diff": diff or None,
+            "docs": [], "bounded": True, "range": rng,
+            "base": base_ref, "head": head_disp, "resolver": resolver,
+            "note": f"PR #{num} ({base_ref}...{head_disp}) via {resolver} "
+                    f"({len(files)} file(s))"}
+
+
 def _resolve_scope(args) -> dict:
     """Deterministically bound the audit scope. Raises ScopeError (fail closed)
     when a scope cannot be bounded."""
     kind = getattr(args, "scope", None) or ("range" if args.range else "working")
+
+    if kind == "pr":
+        return _resolve_pr(args)
 
     if kind == "working":
         _, names, _ = _run(["git", "status", "--porcelain"])
@@ -753,9 +851,10 @@ def _scope_detail(scope: dict) -> dict:
         _, st, _ = _run(["git", "show", "--stat", "--format=", target])
         changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
                    for l in ns.splitlines() if "\t" in l]
-    elif kind == "range":
-        _, ns, _ = _run(["git", "diff", "--name-status", target])
-        _, st, _ = _run(["git", "diff", "--stat", target])
+    elif kind in ("range", "pr"):
+        rng = scope.get("range") or target   # pr's target is a number; use its range
+        _, ns, _ = _run(["git", "diff", "--name-status", rng])
+        _, st, _ = _run(["git", "diff", "--stat", rng])
         changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
                    for l in ns.splitlines() if l.strip()]
     elif kind == "working":
@@ -775,9 +874,10 @@ def _generated_mass(scope: dict) -> dict:
     if kind == "commit":
         num = _run(["git", "show", "--numstat", "--format=", target])[1]
         short = _run(["git", "show", "--shortstat", "--format=", target])[1]
-    elif kind == "range":
-        num = _run(["git", "diff", "--numstat", target])[1]
-        short = _run(["git", "diff", "--shortstat", target])[1]
+    elif kind in ("range", "pr"):
+        rng = scope.get("range") or target   # pr's target is a number; use its range
+        num = _run(["git", "diff", "--numstat", rng])[1]
+        short = _run(["git", "diff", "--shortstat", rng])[1]
     elif kind == "working":
         num = _run(["git", "diff", "--numstat"])[1]
         short = _run(["git", "diff", "--shortstat"])[1]
@@ -871,6 +971,9 @@ def cmd_collect(args) -> int:
         "docs": [d.get("path") for d in scope.get("docs", [])],
         "note": scope.get("note", ""),
     }
+    for _k in ("base", "head", "resolver"):   # PR scope records how it was pinned
+        if scope.get(_k) is not None:
+            resolved_scope[_k] = scope[_k]
     bundle = {
         "schema": "invairiant.evidence-bundle/v1",
         "notice": ("All signals below are candidate pointers gathered by a deterministic "
@@ -1209,10 +1312,11 @@ def main(argv=None) -> int:
     pr.set_defaults(func=cmd_validate_report)
 
     pcol = sub.add_parser("collect", help="gather a deterministic, scope-bounded evidence bundle for the skill")
-    pcol.add_argument("--scope", choices=["working", "range", "commit", "module", "adr", "rp", "repo"],
+    pcol.add_argument("--scope", choices=["working", "range", "commit", "module", "adr", "rp", "pr", "repo"],
                       default=None, help="bounded audit scope (default: range if --range given, else working)")
     pcol.add_argument("--range", default=None, help="git range A..B (for --scope range)")
     pcol.add_argument("--commit", default=None, help="commit sha (for --scope commit)")
+    pcol.add_argument("--pr", default=None, help="pull-request number (for --scope pr; resolves via gh or the pull/<n>/head ref)")
     pcol.add_argument("--path", default=None,
                       help="module dir/file (--scope module), ADR file (--scope adr), or "
                            "refactoring-proposal file (--scope rp)")

@@ -5,7 +5,22 @@ follows Keep a Changelog; versions track the protocol.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`--scope pr` — first-class PR resolver (the main entrypoint, now backed).**
+  `invairiant collect --scope pr --pr <N>` pins a pull request **by number** and
+  resolves it to an ordinary bounded `base...head` range — so `audit-pr <N>` is
+  finally real, not just a promise in the command signature. It is an **optional
+  resolver adapter**: every other scope is pure-local git, and **only** `--scope
+  pr` may reach the remote — via `gh` if present, else the `pull/<n>/head` ref.
+  If the PR can't be reached (no remote, offline, non-GitHub remote) it **fails
+  closed and suggests `--range`**, never widening to the repo. `resolved_scope`
+  records `base`, `head`, and `resolver` (`gh`/`git`). Content-level signals read
+  the working tree, so check out the PR (or run in CI) for full fidelity; the
+  diff, file set, and mass are correct from git regardless. Documented across the
+  skill, `docs/methodology.md` §4.1, `docs/cli.md`, the schema, and the adapters;
+  6 hermetic tests (fail-closed cases + pull-ref resolution against a bare remote
+  carrying `refs/pull/1/head`, no gh/network). 82 tests total.
 
 ## [0.2.1] — 2026-07-04
 

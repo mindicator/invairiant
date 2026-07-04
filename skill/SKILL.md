@@ -48,7 +48,7 @@ not vibes**; it does not perform open-ended repository search or brainstorming.
 
 | Scope kind | Pinned by | `collect` invocation | Natural report type |
 |---|---|---|---|
-| PR / diff | a PR number or range | `--scope range --range A..B` (or working tree) | PR audit |
+| PR | a PR number | `--scope pr --pr <N>` (or `--scope range` / working tree) | PR audit |
 | commit range | `A..B` | `--scope range --range A..B` | tactical (drift) |
 | single commit | a sha | `--scope commit --commit <sha>` | focused / post-hoc |
 | module | a dir/file path | `--scope module --path <path>` | focused audit |
@@ -64,6 +64,16 @@ broadly — exits non-zero rather than silently widening to the whole repo.
 explicit. The scope kind is orthogonal to the audit *type* in
 [methodology.md](../docs/methodology.md) §4 — a range can drive a tactical
 audit, an ADR an event-triggered one.
+
+**`pr` is an optional resolver adapter.** The core scopes are pure-local git;
+**only** `--scope pr` may reach the remote — it pins a PR **by number**, via
+`gh` if present, else the `pull/<n>/head` ref, then turns the PR into an
+ordinary bounded `base...head` range (recorded in `resolved_scope` as
+`base` / `head` / `resolver`). If the PR can't be reached (no remote, offline,
+not a GitHub remote) it **fails closed and suggests `--range`** — it does not
+fall back to scanning the repo. For content-level signals (grep pointers), check
+out the PR first (`gh pr checkout <N>`, or run in CI where the PR head is the
+checkout); the diff, file set, and mass are correct from git either way.
 
 ## Commands
 
@@ -104,6 +114,7 @@ stage 4 never drops a rejected hypothesis.
 
 ```text
 /invairiant audit-pr                              # audit the current diff/PR
+/invairiant audit-pr 123                          # a PR by number (gh / pull-ref)
 /invairiant audit-pr --lenses security-threat,turing
 /invairiant audit-pr HEAD~1..HEAD                 # a specific range
 /invairiant audit-range origin/main..HEAD         # drift across a range
@@ -162,8 +173,11 @@ Scope = the diff + its blast radius. Runbook:
    given, else ≤2 chosen by the diff's risk surface (new agent loop →
    `turing`/`oracle-boundary`; new endpoint → `security-threat`; migration →
    `kleppmann`/`mcconnell`; big generated diff → `generated-surface-area`).
-2. **Collect** the bundle: `invairiant collect --range <range> --out
-   .invairiant/cache/bundle.json` → feed it to the lens passes as input.
+2. **Collect** the bundle — pin the PR **by number**: `invairiant collect
+   --scope pr --pr <N> --out .invairiant/cache/bundle.json` (resolves the PR to
+   its `base...head` range via `gh`/pull-ref, fails closed if unreachable). For a
+   local diff with no PR number, use `--scope range --range <base>...<head>` or
+   the working tree. Feed the bundle to the lens passes as input.
 3. **Pipeline** stages 1 (lens passes) → 2 (verify) → 3 (classify) →
    4 (synthesize), against the PR checklist in `templates/pr-comment.md`.
 4. **Deliverable:** a PR comment — synthesize the report, then render it with

@@ -103,16 +103,25 @@ codebase pinned for a run. Every audit resolves to one **audit target**:
 audit target = pinned scope + evidence bundle + selected lenses + report type
 ```
 
-invAIriant pins seven scope kinds: the working tree, a commit range, a single
-commit, a **module** (a directory/file subtree), an **ADR ↔ code** pair, a
-**refactoring proposal ↔ code** pair, or — opt-in — the whole repo. `invairiant
-collect --scope <kind>` resolves the pin to a **bounded file set** and computes
-the entire evidence bundle (tree, language stats, grep signals, generated mass)
-over that set *only*. It **fails closed**: a scope it cannot bound — a missing
-range, an unknown path/sha, an ADR or proposal whose references don't resolve or
-resolve too broadly — is refused, never silently widened to the whole repo.
-Every bundle records the boundary in a `resolved_scope` block, so what was and
-was not audited is explicit.
+invAIriant pins eight scope kinds: a **PR** (by number), the working tree, a
+commit range, a single commit, a **module** (a directory/file subtree), an
+**ADR ↔ code** pair, a **refactoring proposal ↔ code** pair, or — opt-in — the
+whole repo. `invairiant collect --scope <kind>` resolves the pin to a **bounded
+file set** and computes the entire evidence bundle (tree, language stats, grep
+signals, generated mass) over that set *only*. It **fails closed**: a scope it
+cannot bound — a missing range, an unknown path/sha, an ADR or proposal whose
+references don't resolve or resolve too broadly, a PR that can't be reached — is
+refused, never silently widened to the whole repo. Every bundle records the
+boundary in a `resolved_scope` block, so what was and was not audited is
+explicit.
+
+PR is the **primary entrypoint** and a first-class scope, but it is also the one
+**optional resolver adapter**: the other scopes are pure-local git, whereas
+`--scope pr --pr <N>` may reach the remote (via `gh`, else the `pull/<n>/head`
+ref) to pin the PR — then it becomes an ordinary bounded `base...head` range
+(recorded as `base`/`head`/`resolver`). If the remote is unreachable it fails
+closed and asks for `--range`. So the reach is contained to one scope, and even
+that resolves down to the same bounded range every other change scope uses.
 
 Two of the doc-anchored modes are worth naming, because they catch the
 degradation that never lives in a single PR:

@@ -32,11 +32,13 @@ or types one of these commands — run the pipeline below:
 
 Every audit resolves to one **audit target** = *pinned scope + evidence bundle
 + selected lenses + report type*; the scope commands differ only in the first
-term. `invairiant collect --scope <working|range|commit|module|adr|rp|repo>
+term. `invairiant collect --scope <pr|working|range|commit|module|adr|rp|repo>
 [target]` resolves the pin to a **bounded** file set and **fails closed** if it
 cannot — it never silently widens to the whole repo (that is `full-audit`,
-chosen deliberately). invAIriant audits **bounded engineering scopes, not
-vibes**; audit only inside the bundle's `resolved_scope`.
+chosen deliberately). `--scope pr --pr <N>` is the one **optional adapter** (may
+reach the remote via `gh`/pull-ref; PR → `base...head` range); all other scopes
+are pure-local. invAIriant audits **bounded engineering scopes, not vibes**;
+audit only inside the bundle's `resolved_scope`.
 
 ## How to run it (the four-stage pipeline)
 

@@ -25,12 +25,15 @@
       "additionalProperties": true,
       "required": ["kind", "bounded", "files_in_scope"],
       "properties": {
-        "kind": { "enum": ["working", "range", "commit", "module", "adr", "rp", "repo"] },
-        "target": { "type": ["string", "null"], "description": "The pin: the range, commit sha, module path, ADR path, or refactoring-proposal path (null for the working tree)." },
+        "kind": { "enum": ["working", "range", "commit", "module", "adr", "rp", "pr", "repo"] },
+        "target": { "type": ["string", "null"], "description": "The pin: the range, commit sha, module path, ADR/proposal path, or PR number (null for the working tree)." },
         "bounded": { "type": "boolean" },
         "files_in_scope": { "type": "integer", "minimum": 0 },
         "sample_files": { "type": "array", "items": { "type": "string" }, "description": "A capped preview of the in-scope files (not necessarily the full set)." },
-        "has_diff": { "type": "boolean", "description": "True for change scopes (working/range/commit); false for snapshot scopes (module/adr/repo)." },
+        "has_diff": { "type": "boolean", "description": "True for change scopes (working/range/commit/pr); false for snapshot scopes (module/adr/rp/repo)." },
+        "base": { "type": "string", "description": "PR scope only: the resolved base ref (e.g. origin/main) the PR diffs against." },
+        "head": { "type": "string", "description": "PR scope only: the PR head (branch name or short sha)." },
+        "resolver": { "enum": ["gh", "git"], "description": "PR scope only: how the PR was pinned — gh CLI, or the git pull/<n>/head ref." },
         "docs": { "type": "array", "items": { "type": "string" }, "description": "Scope-supplied documents joined to the canonical set (e.g. the ADR text for an adr scope)." },
         "note": { "type": "string" }
       }

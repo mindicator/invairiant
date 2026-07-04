@@ -78,7 +78,7 @@ protocol rules a schema cannot express:
 **rendered markdown** report (H1, sections, verdict, kept hypotheses present) —
 JSON stays the source of truth. Exit 0 = valid, 1 = problems.
 
-### `invairiant collect [--scope KIND] [--range A..B] [--commit SHA] [--path P] [--narrow P] [--out F] [--run-adapters] [--cap N]`
+### `invairiant collect [--scope KIND] [--range A..B] [--commit SHA] [--pr N] [--path P] [--narrow P] [--out F] [--run-adapters] [--cap N]`
 Gather a deterministic **evidence bundle** for the skill — the CLI's core
 helper. One JSON object
 ([`schemas/evidence-bundle.schema.json`](../schemas/evidence-bundle.schema.json),
@@ -99,6 +99,7 @@ evidence-gatherer, not a whole-repo scanner:
 | `--scope` | Needs | Resolves to |
 |---|---|---|
 | `working` (default) | — | uncommitted working-tree changes |
+| `pr` | `--pr N` | a pull request **by number** → its `base...head` range. The one **optional resolver adapter**: reaches the remote via `gh`, else the `pull/<n>/head` ref; records `base`/`head`/`resolver` in `resolved_scope` |
 | `range` | `--range A..B` | files changed in the range (diff) |
 | `commit` | `--commit SHA` | files touched by one commit (diff) |
 | `module` | `--path DIR\|FILE` | a snapshot of that subtree (no diff) |
@@ -106,11 +107,22 @@ evidence-gatherer, not a whole-repo scanner:
 | `rp` | `--path RP.md` | a refactoring proposal + the tracked code it references (snapshot); `--narrow P` restricts to a subpath |
 | `repo` | — | the whole repo, **explicitly unbounded** (full-audit) |
 
+**Local by default; `pr` is the one adapter.** Every scope but `pr` is pure-local
+git — no network, no external tools. `--scope pr` is the sole exception: it may
+call `gh` or fetch the `pull/<n>/head` ref to pin the PR, then collapses to an
+ordinary `base...head` range like any other change scope. Its `resolved_scope`
+records `base`, `head`, and `resolver` (`gh` or `git`). Note: content-level
+signals (grep pointers) are read from the working tree, so for a PR that isn't
+checked out they'll be sparse — the diff, file set, and mass are still correct
+from git; check out the PR (or run in CI, where it's the checkout) for full
+signal fidelity.
+
 `collect` **fails closed** (exit 2, `scope could not be bounded`) when a scope
-cannot be pinned — a missing `--range`, an unknown path or sha, or an ADR /
+cannot be pinned — a missing `--range`, an unknown path or sha, an ADR /
 refactoring proposal whose references don't resolve or resolve too broadly (past
-a bound relative to repo size, unless `--narrow` tightens them). It never
-silently widens to the whole repo; `repo`
+a bound relative to repo size, unless `--narrow` tightens them), or a PR that
+can't be reached (no remote, offline, or a non-GitHub remote — it suggests
+`--range` instead). It never silently widens to the whole repo; `repo`
 is the one deliberately unbounded scope. `--range A..B` with no `--scope` is a
 shorthand for `--scope range`. Every bundle carries a **`resolved_scope`** block
 (`kind`, `target`, `bounded`, `files_in_scope`, `sample_files`, `has_diff`) so
