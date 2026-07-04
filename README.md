@@ -14,11 +14,13 @@
 [![Evidence first](https://img.shields.io/badge/evidence-first-brightgreen?style=flat-square)](docs/evidence-rules.md)
 [![No evidence, no finding](https://img.shields.io/badge/no%20evidence-no%20finding-critical?style=flat-square)](docs/evidence-rules.md)
 
-**An evidence-based, multi-lens architecture-audit skill (+ CLI) for systems that must not drift.**
+**invAIriant keeps architectural invariants from drifting under AI-assisted change.**
+
+An evidence-based, multi-lens architecture-audit skill (+ CLI) for systems that must not drift.
 
 `AI-assisted analysis` · `reusable lenses` · `evidence first` · `gates on S0/S1`
 
-<sub>a protocol by <b>mindicator &amp; silicon bags quartet</b></sub>
+**No evidence. No finding.**
 
 </div>
 
@@ -121,7 +123,7 @@ supports it.
 
 | Layer | What it is | Status |
 |---|---|---|
-| **① Primary — the agent skill** | [`/invairiant`](skill/SKILL.md): an LLM coding agent runs the audit. Commands: `audit-pr`, `full-audit`, `verify-findings`, `classify-severity`, `synthesize-report`, `closure-verification`. **This is the product.** | ✅ usable now |
+| **① Primary — the agent skill** | [`/invairiant`](skill/SKILL.md): an LLM coding agent runs the audit. PR is the main entrypoint; other **bounded targets** share the same pipeline — `audit-pr`, `audit-range`, `audit-commit`, `audit-module`, `audit-adr`, `audit-rp` (refactoring proposal), `full-audit`, `verify-findings`, `classify-severity`, `synthesize-report`, `closure-verification`. **This is the product.** | ✅ usable now |
 | **② Secondary — the protocol layer** | [schemas](schemas/) + [templates](templates/) + [prompt pack](prompts/) + [lenses](lenses/) — the reusable contract the skill (or a human) stands on. | ✅ usable now |
 | **③ Helper — a narrow CLI** | [`invairiant`](docs/cli.md): `init`, `collect`, `validate-config`, `validate-report`, `render-report`, `render-comment`, `ci-gate`, `record`, `history`. **It serves the audit; it never performs one** — no lenses, no findings, no scores. | ✅ reference impl |
 
@@ -231,6 +233,11 @@ proof of correctness · not a replacement for tests, static analysis,
 SAST/DAST, threat modeling, or formal methods (it turns their output into
 evidence — [docs/related-work.md](docs/related-work.md)) · not a generator of
 findings without evidence · not architecture cosplay.
+
+And not "AI, wander the repo and tell me what you think." **invAIriant audits
+bounded engineering scopes, not vibes** — PRs, commit ranges, single commits,
+modules, ADR↔code drift, refactoring proposals. A scope it cannot bound is
+refused, not widened.
 
 ## Contributing
 
