@@ -19,11 +19,28 @@
         "range": { "type": ["string", "null"] }
       }
     },
+    "resolved_scope": {
+      "type": "object",
+      "description": "The bounded audit scope collect resolved to — the boundary made explicit and auditable. Every downstream field (tree, language stats, signals, generated mass) is computed over this file set only. `bounded: false` occurs solely for the opt-in `repo` scope; every other kind fails closed rather than silently widening.",
+      "additionalProperties": true,
+      "required": ["kind", "bounded", "files_in_scope"],
+      "properties": {
+        "kind": { "enum": ["working", "range", "commit", "module", "adr", "repo"] },
+        "target": { "type": ["string", "null"], "description": "The pin: the range, commit sha, module path, or ADR path (null for the working tree)." },
+        "bounded": { "type": "boolean" },
+        "files_in_scope": { "type": "integer", "minimum": 0 },
+        "sample_files": { "type": "array", "items": { "type": "string" }, "description": "A capped preview of the in-scope files (not necessarily the full set)." },
+        "has_diff": { "type": "boolean", "description": "True for change scopes (working/range/commit); false for snapshot scopes (module/adr/repo)." },
+        "docs": { "type": "array", "items": { "type": "string" }, "description": "Scope-supplied documents joined to the canonical set (e.g. the ADR text for an adr scope)." },
+        "note": { "type": "string" }
+      }
+    },
     "scope": {
       "type": "object",
       "additionalProperties": true,
       "properties": {
         "range": { "type": ["string", "null"] },
+        "snapshot": { "type": "boolean" },
         "changed_files": { "type": "array", "items": { "type": "object" } },
         "diffstat": { "type": "string" }
       }

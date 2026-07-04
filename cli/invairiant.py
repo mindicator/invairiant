@@ -502,17 +502,21 @@ def _rg(pattern: str, cap: int) -> list:
     return items
 
 
-def _scan(patterns: dict, cap: int, budget: dict) -> dict:
-    """Grep candidate pointers for each named pattern. Ripgrep per pattern when
-    available; otherwise ONE bounded pass over tracked files (skipping large and
-    binary files, capping the file count) so the cost is O(files), not
-    O(files x patterns), and never unbounded. Candidate pointers, not findings."""
-    if shutil.which("rg"):
-        return {k: _rg(p, cap) for k, p in patterns.items()}
+def _ls_files(path: str = None) -> list:
+    """Tracked files, optionally bounded to a path (dir or file)."""
+    cmd = ["git", "ls-files"]
+    if path:
+        cmd += ["--", path]
+    _, out, _ = _run(cmd)
+    return [f for f in out.splitlines() if f.strip()]
+
+
+def _scan_fileset(patterns: dict, cap: int, budget: dict, files: list) -> dict:
+    """One bounded pass over a given file set (skipping large/binary files,
+    capping the count) — O(files), never O(files x patterns). Pointers, not findings."""
     compiled = {k: re.compile(p, re.I) for k, p in patterns.items()}
     out = {k: [] for k in patterns}
-    _, files, _ = _run(["git", "ls-files"])
-    for f in files.splitlines():
+    for f in files:
         p = Path(f)
         if not p.is_file():
             continue
@@ -534,16 +538,28 @@ def _scan(patterns: dict, cap: int, budget: dict) -> dict:
     return out
 
 
+def _scan(patterns: dict, cap: int, budget: dict, files: list = None) -> dict:
+    """Grep candidate pointers per named pattern. When `files` is given (a bounded
+    scope), scan ONLY those. When None (repo scope), use ripgrep if present, else
+    a bounded pass over all tracked files. Candidate pointers, not findings."""
+    if files is None:
+        if shutil.which("rg"):
+            return {k: _rg(p, cap) for k, p in patterns.items()}
+        files = _ls_files()
+    return _scan_fileset(patterns, cap, budget, files)
+
+
 def _new_budget() -> dict:
     return {"max_files": _MAX_SCAN_FILES, "max_bytes": _MAX_FILE_BYTES,
             "files_scanned": 0, "skipped_large_or_binary": 0, "truncated": False,
             "ripgrep": bool(shutil.which("rg"))}
 
 
-def _lang_stats() -> dict:
-    _, files, _ = _run(["git", "ls-files"])
+def _lang_stats(files: list = None) -> dict:
+    if files is None:
+        files = _ls_files()
     stats: dict = {}
-    for i, f in enumerate(files.splitlines()):
+    for i, f in enumerate(files):
         if i >= _MAX_SCAN_FILES:
             break
         p = Path(f)
@@ -560,41 +576,207 @@ def _lang_stats() -> dict:
     return dict(sorted(stats.items(), key=lambda kv: -kv[1])[:15])
 
 
-def _repo_tree() -> list:
-    _, files, _ = _run(["git", "ls-files"])
+def _repo_tree(files: list = None) -> list:
+    if files is None:
+        files = _ls_files()
     top: dict = {}
-    for f in files.splitlines():
+    for f in files:
         head = f.split("/", 1)[0]
         top[head] = top.get(head, 0) + 1
     return [{"entry": k, "tracked_files": v} for k, v in sorted(top.items())]
 
 
-def _scope(rng) -> dict:
-    if rng:
-        _, names, _ = _run(["git", "diff", "--name-status", rng])
-        _, stat, _ = _run(["git", "diff", "--stat", rng])
-        changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
-                   for l in names.splitlines() if l.strip()]
-    else:
+# A scope resolver turns a bounded scope (kind + target) into a file set, so
+# `collect` computes the whole bundle OVER that set — bounded, never a general
+# repo search. Only the `repo` scope is (explicitly) unbounded.
+_ADR_MAX_SCOPE_FILES = 200
+
+
+class ScopeError(Exception):
+    """A scope that cannot be bounded — collect fails closed rather than
+    silently scanning the whole repo."""
+
+
+def _extract_adr_refs(text: str):
+    """Pull the file paths and code identifiers an ADR names (backtick spans +
+    bare path-like tokens). Returns (paths, identifiers)."""
+    toks = re.findall(r"`([^`\n]{2,80})`", text)
+    toks += re.findall(r"(?<![\w`/])([A-Za-z0-9_][\w./\-]*/[\w./\-]+\.\w{1,6})", text)
+    paths, idents = set(), set()
+    for tok in toks:
+        tok = tok.strip().strip("()").split(":")[0]
+        if not tok:
+            continue
+        if "/" in tok or re.search(r"\.\w{1,6}$", tok):
+            paths.add(tok)
+        elif re.match(r"^[A-Za-z_][A-Za-z0-9_]{2,}$", tok):
+            idents.add(tok)
+    return paths, idents
+
+
+def _resolve_scope(args) -> dict:
+    """Deterministically bound the audit scope. Raises ScopeError (fail closed)
+    when a scope cannot be bounded."""
+    kind = getattr(args, "scope", None) or ("range" if args.range else "working")
+
+    if kind == "working":
         _, names, _ = _run(["git", "status", "--porcelain"])
-        _, stat, _ = _run(["git", "diff", "--stat"])
+        files = [l[3:] for l in names.splitlines() if l.strip()]
+        _, diff, _ = _run(["git", "diff"])
+        return {"kind": kind, "target": "working tree", "files": files,
+                "diff": diff or None, "docs": [], "bounded": True,
+                "note": "uncommitted working-tree changes"}
+
+    if kind == "range":
+        rng = args.range
+        if not rng:
+            raise ScopeError("--scope range requires --range A..B")
+        rc, names, err = _run(["git", "diff", "--name-only", rng])
+        if rc != 0:
+            raise ScopeError(f"range '{rng}' did not resolve ({err.strip()[:120]})")
+        files = [f for f in names.splitlines() if f.strip()]
+        _, diff, _ = _run(["git", "diff", rng])
+        return {"kind": kind, "target": rng, "files": files, "diff": diff or None,
+                "docs": [], "bounded": True, "note": f"files changed in {rng}"}
+
+    if kind == "commit":
+        sha = args.commit
+        if not sha:
+            raise ScopeError("--scope commit requires --commit <sha>")
+        rc, names, err = _run(["git", "show", "--name-only", "--format=", sha])
+        if rc != 0:
+            raise ScopeError(f"commit '{sha}' did not resolve ({err.strip()[:120]})")
+        files = [f for f in names.splitlines() if f.strip()]
+        _, diff, _ = _run(["git", "show", sha])
+        return {"kind": kind, "target": sha, "files": files, "diff": diff or None,
+                "docs": [], "bounded": True, "note": f"files in commit {sha[:12]}"}
+
+    if kind == "module":
+        path = args.path
+        if not path:
+            raise ScopeError("--scope module requires --path <dir-or-file>")
+        if not Path(path).exists():
+            raise ScopeError(f"module path '{path}' does not exist")
+        files = _ls_files(path)
+        if not files:
+            raise ScopeError(f"module path '{path}' has no tracked files")
+        return {"kind": kind, "target": path, "files": files, "diff": None,
+                "docs": [], "bounded": True, "snapshot": True,
+                "note": f"tracked files under {path} (snapshot)"}
+
+    if kind == "adr":
+        adr = args.path
+        if not adr or not Path(adr).is_file():
+            raise ScopeError("--scope adr requires --path <adr-file>")
+        text = Path(adr).read_text(encoding="utf-8", errors="ignore")
+        docs = [{"path": adr, "excerpt": text[:8000]}]
+        paths, idents = _extract_adr_refs(text)
+        tracked = set(_ls_files())
+        refs = set()
+        for pth in paths:
+            pfx = pth.rstrip("/") + "/"
+            if pth in tracked:
+                refs.add(pth)
+            elif any(t.startswith(pfx) for t in tracked):
+                refs.update(t for t in tracked if t.startswith(pfx))
+        if idents:
+            idre = re.compile(r"\b(" + "|".join(re.escape(i) for i in list(idents)[:40]) + r")\b")
+            for f in tracked:
+                if len(refs) > _ADR_MAX_SCOPE_FILES:
+                    break
+                p = Path(f)
+                if not p.is_file() or str(p) == adr:
+                    continue
+                try:
+                    if p.stat().st_size > _MAX_FILE_BYTES or _is_probably_binary(p):
+                        continue
+                    if idre.search(p.read_text(encoding="utf-8", errors="ignore")):
+                        refs.add(f)
+                except Exception:  # noqa: BLE001
+                    continue
+        narrow = getattr(args, "narrow", None)
+        if narrow:
+            pfx = narrow.rstrip("/") + "/"
+            refs = {f for f in refs if f == narrow or f.startswith(pfx)}
+        files = sorted(refs)
+        if not files:
+            raise ScopeError(
+                "ADR references did not resolve to tracked code"
+                + (f" under --narrow '{narrow}'" if narrow else "; re-run with --narrow <path>"))
+        if len(files) > _ADR_MAX_SCOPE_FILES and not narrow:
+            raise ScopeError(f"ADR references resolved too broadly ({len(files)} files); "
+                             "re-run with --narrow <path>")
+        return {"kind": kind, "target": adr, "files": files, "diff": None, "docs": docs,
+                "bounded": True, "snapshot": True,
+                "note": f"ADR + the code it references ({len(files)} files)"
+                        + (f", narrowed to {narrow}" if narrow else "")}
+
+    if kind == "repo":
+        return {"kind": kind, "target": "whole repo", "files": _ls_files(), "diff": None,
+                "docs": [], "bounded": False,
+                "note": "explicitly unbounded (full-audit scope)"}
+
+    raise ScopeError(f"unknown scope '{kind}'")
+
+
+def _scope_detail(scope: dict) -> dict:
+    """The change detail (name-status + diffstat) for change scopes; a snapshot
+    summary otherwise."""
+    kind, target = scope["kind"], scope["target"]
+    if kind == "commit":
+        _, ns, _ = _run(["git", "show", "--name-status", "--format=", target])
+        _, st, _ = _run(["git", "show", "--stat", "--format=", target])
+        changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
+                   for l in ns.splitlines() if "\t" in l]
+    elif kind == "range":
+        _, ns, _ = _run(["git", "diff", "--name-status", target])
+        _, st, _ = _run(["git", "diff", "--stat", target])
+        changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
+                   for l in ns.splitlines() if l.strip()]
+    elif kind == "working":
+        _, ns, _ = _run(["git", "status", "--porcelain"])
+        _, st, _ = _run(["git", "diff", "--stat"])
         changed = [{"status": l[:2].strip(), "file": l[3:]}
-                   for l in names.splitlines() if l.strip()]
-    return {"range": rng, "changed_files": changed, "diffstat": stat.strip()[:4000]}
+                   for l in ns.splitlines() if l.strip()]
+    else:  # module / adr / repo — a snapshot, not a change
+        return {"kind": kind, "target": target, "snapshot": True,
+                "changed_files": [], "diffstat": ""}
+    return {"kind": kind, "target": target, "changed_files": changed,
+            "diffstat": st.strip()[:4000]}
 
 
-def _generated_mass(rng) -> dict:
-    diff_args = ["git", "diff"] + ([rng] if rng else [])
-    _, shortstat, _ = _run(diff_args + ["--shortstat"])
-    _, numstat, _ = _run(diff_args + ["--numstat"])
+def _generated_mass(scope: dict) -> dict:
+    kind, target = scope["kind"], scope["target"]
+    if kind == "commit":
+        num = _run(["git", "show", "--numstat", "--format=", target])[1]
+        short = _run(["git", "show", "--shortstat", "--format=", target])[1]
+    elif kind == "range":
+        num = _run(["git", "diff", "--numstat", target])[1]
+        short = _run(["git", "diff", "--shortstat", target])[1]
+    elif kind == "working":
+        num = _run(["git", "diff", "--numstat"])[1]
+        short = _run(["git", "diff", "--shortstat"])[1]
+    else:  # module / adr / repo — a snapshot: report the size of the file set
+        sized, total = [], 0
+        for f in scope["files"]:
+            p = Path(f)
+            try:
+                n = sum(1 for _ in p.open("rb")) if (p.is_file() and p.stat().st_size <= _MAX_FILE_BYTES) else 0
+            except Exception:  # noqa: BLE001
+                n = 0
+            total += n
+            sized.append({"file": f, "lines": n})
+        sized.sort(key=lambda x: -x["lines"])
+        return {"snapshot": True, "files": len(scope["files"]),
+                "total_lines": total, "largest_files": sized[:10]}
     files = []
-    for l in numstat.splitlines():
+    for l in num.splitlines():
         parts = l.split("\t")
         if len(parts) >= 3 and parts[0].isdigit():
             files.append({"file": parts[2], "added": int(parts[0]),
                           "deleted": int(parts[1]) if parts[1].isdigit() else 0})
     files.sort(key=lambda x: -(x["added"] + x["deleted"]))
-    return {"shortstat": shortstat.strip(), "largest_changed": files[:10]}
+    return {"shortstat": short.strip(), "largest_changed": files[:10]}
 
 
 def _config_and_docs():
@@ -632,7 +814,16 @@ def _known_rejected() -> list:
 
 
 def cmd_collect(args) -> int:
+    # Bound the scope first — FAIL CLOSED rather than silently scan the whole repo.
+    try:
+        scope = _resolve_scope(args)
+    except ScopeError as exc:
+        print(f"collect: scope could not be bounded — {exc}", file=sys.stderr)
+        return 2
+    scan_files = None if scope["kind"] == "repo" else scope["files"]
+
     cfg, docs = _config_and_docs()
+    docs = list(docs) + list(scope.get("docs", []))   # ADR text joins canonical docs
     git_info = {
         "head": _git(["rev-parse", "HEAD"]),
         "branch": _git(["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -642,22 +833,36 @@ def cmd_collect(args) -> int:
     budget = _new_budget()
     patterns = dict(_SIGNAL_PATTERNS)
     patterns["import_boundaries"] = _IMPORT_PATTERN
-    scanned = _scan(patterns, args.cap, budget)
+    scanned = _scan(patterns, args.cap, budget, files=scan_files)
     imports = scanned.pop("import_boundaries")
+
+    resolved_scope = {
+        "kind": scope["kind"],
+        "target": scope["target"],
+        "bounded": scope["bounded"],
+        "files_in_scope": len(scope["files"]),
+        "sample_files": scope["files"][:25],
+        "has_diff": scope.get("diff") is not None,
+        "docs": [d.get("path") for d in scope.get("docs", [])],
+        "note": scope.get("note", ""),
+    }
     bundle = {
         "schema": "invairiant.evidence-bundle/v1",
         "notice": ("All signals below are candidate pointers gathered by a deterministic "
-                   "helper — NOT findings. The /invairiant skill applies lenses; only "
-                   "verified, evidence-bound claims become findings. The CLI never judges."),
+                   "helper over the RESOLVED SCOPE ONLY — NOT findings, and not a general "
+                   "repo search. The /invairiant skill applies lenses; only verified, "
+                   "evidence-bound claims become findings. The CLI never judges."),
+        "resolved_scope": resolved_scope,
         "generated_for": {
             "repo": Path.cwd().name,
             "commit": git_info["head"],
             "branch": git_info["branch"],
-            "range": args.range,
+            "scope": scope["kind"],
+            "target": scope["target"],
         },
-        "scope": _scope(args.range),
-        "repo_tree": _repo_tree(),
-        "language_stats": _lang_stats(),
+        "scope": _scope_detail(scope),
+        "repo_tree": _repo_tree(files=scan_files),
+        "language_stats": _lang_stats(files=scan_files),
         "tests_ci": {
             "git": git_info,
             "adapters_ran": bool(args.run_adapters),
@@ -667,16 +872,19 @@ def cmd_collect(args) -> int:
         "canonical_docs": docs,
         "signals": scanned,
         "import_boundaries": imports,
-        "generated_mass": _generated_mass(args.range),
+        "generated_mass": _generated_mass(scope),
         "known_rejected": _known_rejected(),
         "limits": budget,
     }
     payload = json.dumps(bundle, indent=2, ensure_ascii=False)
+    unb = "" if scope["bounded"] else ", UNBOUNDED"
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(payload + "\n", encoding="utf-8")
         n = sum(len(v) for v in bundle["signals"].values())
-        print(f"wrote evidence bundle to {args.out} ({n} candidate signal(s); raw — keep it gitignored)")
+        print(f"wrote evidence bundle to {args.out} — scope={scope['kind']} "
+              f"({resolved_scope['files_in_scope']} file(s){unb}); {n} candidate "
+              f"signal(s); raw — keep it gitignored")
     else:
         print(payload)
     return 0
@@ -975,8 +1183,13 @@ def main(argv=None) -> int:
     pr.add_argument("--config", default="invairiant.config.yml", help="config for the low-score threshold")
     pr.set_defaults(func=cmd_validate_report)
 
-    pcol = sub.add_parser("collect", help="gather a deterministic evidence bundle for the skill")
-    pcol.add_argument("--range", default=None, help="git range A..B (default: working-tree changes)")
+    pcol = sub.add_parser("collect", help="gather a deterministic, scope-bounded evidence bundle for the skill")
+    pcol.add_argument("--scope", choices=["working", "range", "commit", "module", "adr", "repo"],
+                      default=None, help="bounded audit scope (default: range if --range given, else working)")
+    pcol.add_argument("--range", default=None, help="git range A..B (for --scope range)")
+    pcol.add_argument("--commit", default=None, help="commit sha (for --scope commit)")
+    pcol.add_argument("--path", default=None, help="module dir/file (--scope module) or ADR file (--scope adr)")
+    pcol.add_argument("--narrow", default=None, help="restrict an ADR scope's code to this subtree")
     pcol.add_argument("--out", default=None, help="write bundle here (convention: .invairiant/cache/, gitignored)")
     pcol.add_argument("--run-adapters", action="store_true", help="also run declared evidence_adapters (slower)")
     pcol.add_argument("--timeout", type=int, default=180)
