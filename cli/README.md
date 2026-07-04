@@ -2,19 +2,20 @@
 
 Infrastructure around the agentic audit — **not an architecture auditor.** No
 lenses, no findings, no scores. All judgment lives in the
-[`/invairiant` skill](../skill/SKILL.md); this CLI scaffolds, validates,
+[`/invairiant` skill](https://github.com/mindicator/invAIriant/blob/main/skill/SKILL.md); this CLI scaffolds, validates,
 collects evidence, renders, and gates.
 
-Full spec and rationale: [`docs/cli.md`](../docs/cli.md).
+Full spec and rationale: [`docs/cli.md`](https://github.com/mindicator/invAIriant/blob/main/docs/cli.md).
 
 ## Install
 
 ```bash
-pip install -e .     # or: pipx install -e .  → gives the `invairiant` command
+pip install invairiant          # from a checkout for dev: pip install -e .
 ```
 
-(No install? Run `python3 cli/invairiant.py <command>` directly.) Python 3.9+;
-`jsonschema` + `pyyaml` are pulled in as dependencies.
+Gives the `invairiant` command; the framework it needs rides in the wheel, so no
+checkout is required. (No install? Run `python3 cli/invairiant.py <command>`
+directly.) Python 3.9+; `jsonschema` + `pyyaml` are pulled in as dependencies.
 
 ## Commands
 
@@ -32,7 +33,7 @@ pip install -e .     # or: pipx install -e .  → gives the `invairiant` command
 
 `collect-evidence` is a thin alias for the adapter-only subset of `collect`.
 
-Full spec: [`docs/cli.md`](../docs/cli.md). Worked flow:
-[`docs/demo.md`](../docs/demo.md). Resolves the framework via
+Full spec: [`docs/cli.md`](https://github.com/mindicator/invAIriant/blob/main/docs/cli.md). Worked flow:
+[`docs/demo.md`](https://github.com/mindicator/invAIriant/blob/main/docs/demo.md). Resolves the framework via
 `$INVAIRIANT_HOME`, the repo layout, or by searching upward from the current
 directory.

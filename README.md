@@ -51,7 +51,7 @@ skill shells out to (collect evidence · validate · render · gate); it never
 runs a lens or produces a finding.
 
 ```bash
-pip install -e .                                          # once on PyPI: pip install invairiant
+pip install invairiant                                    # from a checkout for dev: pip install -e .
 invairiant collect --scope pr --pr 123 --out .invairiant/cache/b.json
 invairiant render-comment report.json                     # paste-ready PR comment
 invairiant ci-gate report.json                            # exit 1 on open S0/S1

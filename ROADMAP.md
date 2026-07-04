@@ -15,12 +15,12 @@ judgment, when a project needs it, goes through a custom project lens
 ## v0.3 — hardening & reach (planned)
 
 **Packaging & distribution**
-- **Packaging is production-grade** *(done)* — the wheel/sdist bundle the
-  framework the CLI needs, so `pip install invairiant` works outside a checkout
-  (CI packaging smoke guards it). The remaining step is the actual **PyPI
-  upload** — a manual maintainer publish, not a code change; step-by-step in
-  [docs/publishing.md](docs/publishing.md) (manual `twine`, or automated via
-  GitHub Trusted Publishing).
+- **On PyPI** *(done)* — [`pip install invairiant`](https://pypi.org/project/invairiant/)
+  is live; the wheel/sdist bundle the framework the CLI needs (a CI packaging
+  smoke guards it). Uploads run over **GitHub Trusted Publishing** (OIDC, no
+  token) via [`publish.yml`](.github/workflows/publish.yml), so cutting a release
+  auto-publishes that version. Setup + manual fallback:
+  [docs/publishing.md](docs/publishing.md).
 - Publish the GitHub Action to the Marketplace (the `action.yml` already works
   via `uses: mindicator/invairiant@<ref>` and now understands the bounded
   scopes — `scope`/`pr`/`commit`/`path`/`narrow`).
