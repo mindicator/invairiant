@@ -34,6 +34,7 @@
         "base": { "type": "string", "description": "PR scope only: the resolved base ref (e.g. origin/main) the PR diffs against." },
         "head": { "type": "string", "description": "PR scope only: the PR head (branch name or short sha)." },
         "resolver": { "enum": ["gh", "git"], "description": "PR scope only: how the PR was pinned — gh CLI, or the git pull/<n>/head ref." },
+        "head_checked_out": { "type": "boolean", "description": "PR scope only: whether the PR head equals the working-tree HEAD. When false, content-level grep signals are sparse (read from the working tree) though the diff/file set/mass stay correct from git." },
         "docs": { "type": "array", "items": { "type": "string" }, "description": "Scope-supplied documents joined to the canonical set (e.g. the ADR text for an adr scope)." },
         "note": { "type": "string" }
       }

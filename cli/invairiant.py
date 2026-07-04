@@ -716,9 +716,15 @@ def _resolve_pr(args) -> dict:
     _, diff, _ = _run(["git", "diff", rng])
 
     head_disp = head_name or head_sha[:12]
+    # Content-level signals are read from the working tree; if the PR head isn't
+    # what's checked out, they'll be sparse (the diff/files/mass stay correct
+    # from git). Flag it so collect can warn.
+    cur = _run(["git", "rev-parse", "HEAD"])[1].strip()
+    head_checked_out = bool(cur) and cur == head_sha
     return {"kind": "pr", "target": num, "files": files, "diff": diff or None,
             "docs": [], "bounded": True, "range": rng,
             "base": base_ref, "head": head_disp, "resolver": resolver,
+            "head_checked_out": head_checked_out,
             "note": f"PR #{num} ({base_ref}...{head_disp}) via {resolver} "
                     f"({len(files)} file(s))"}
 
@@ -947,6 +953,13 @@ def cmd_collect(args) -> int:
         return 2
     scan_files = None if scope["kind"] == "repo" else scope["files"]
 
+    if scope["kind"] == "pr" and not scope.get("head_checked_out", True):
+        print(f"note: PR #{scope['target']} head ({scope.get('head')}) is not checked "
+              f"out — content signals read the working tree and will be sparse. Run "
+              f"`gh pr checkout {scope['target']}` (or audit in CI, where the PR head "
+              "is the checkout) for full grep fidelity; the diff, file set, and mass "
+              "are correct from git regardless.", file=sys.stderr)
+
     cfg, docs = _config_and_docs()
     docs = list(docs) + list(scope.get("docs", []))   # ADR / proposal text joins canonical docs
     git_info = {
@@ -971,7 +984,7 @@ def cmd_collect(args) -> int:
         "docs": [d.get("path") for d in scope.get("docs", [])],
         "note": scope.get("note", ""),
     }
-    for _k in ("base", "head", "resolver"):   # PR scope records how it was pinned
+    for _k in ("base", "head", "resolver", "head_checked_out"):   # PR scope records how it was pinned
         if scope.get(_k) is not None:
             resolved_scope[_k] = scope[_k]
     bundle = {

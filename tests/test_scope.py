@@ -206,12 +206,19 @@ class TestPR:
 
     def test_resolves_pull_ref_to_bounded_range(self, cli, tmp_path, monkeypatch):
         consumer = _init_pr_repo(tmp_path)
-        monkeypatch.chdir(consumer)
+        monkeypatch.chdir(consumer)                    # on main, NOT the PR head
         s = cli._resolve_scope(_ns(scope="pr", pr="1"))
         assert s["kind"] == "pr" and s["bounded"] is True
         assert s["files"] == ["feature.txt"]          # the PR's changed file only
         assert s["diff"] and s["range"] and "..." in s["range"]
         assert s["base"].endswith("/main") and s["resolver"] == "git"
+        assert s["head_checked_out"] is False          # #3: drives the sparse-signals notice
+
+    def test_head_checked_out_true_on_the_pr_branch(self, cli, tmp_path, monkeypatch):
+        _init_pr_repo(tmp_path)
+        monkeypatch.chdir(tmp_path / "work")           # this repo IS on the PR head (feature)
+        s = cli._resolve_scope(_ns(scope="pr", pr="1"))
+        assert s["kind"] == "pr" and s["head_checked_out"] is True
 
     def test_e2e_bundle_records_pr_resolution(self, cli_path, tmp_path):
         consumer = _init_pr_repo(tmp_path)
@@ -223,6 +230,8 @@ class TestPR:
         rs = json.loads(out.read_text(encoding="utf-8"))["resolved_scope"]
         assert rs["kind"] == "pr" and rs["has_diff"] is True and rs["bounded"] is True
         assert rs["base"].endswith("/main") and rs["resolver"] == "git" and rs["head"]
+        assert rs["head_checked_out"] is False
+        assert "not checked out" in r.stderr           # #3: the NOTICE fired
 
 
 class TestScopedScanE2E:
