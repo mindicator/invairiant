@@ -66,35 +66,21 @@ guarantees CI was green on the tag).
 
 1. **One-time PyPI setup** — PyPI → *your project → Publishing* (or, before the
    project exists, *Account → Publishing → Add a pending publisher*). Add a
-   **GitHub** trusted publisher:
-   - Owner: `mindicator`  ·  Repository: `invAIriant`
-   - Workflow name: `publish.yml`  ·  Environment: `pypi`
-2. **Add the workflow** `.github/workflows/publish.yml`:
-   ```yaml
-   name: Publish to PyPI
-   on:
-     release:
-       types: [published]   # fires when a GitHub release is published
-     workflow_dispatch: {}  # or run it by hand
-   permissions:
-     contents: read
-   jobs:
-     publish:
-       runs-on: ubuntu-latest
-       environment: pypi
-       permissions:
-         id-token: write    # OIDC — this is what replaces the token
-       steps:
-         - uses: actions/checkout@v4
-         - uses: actions/setup-python@v5
-           with: { python-version: "3.x" }
-         - run: python -m pip install --upgrade build
-         - run: python -m build
-         - uses: pypa/gh-action-pypi-publish@release/v1
-   ```
-3. From then on, the existing release flow (tag → green CI → `gh release create`)
-   also uploads to PyPI. Do the **first** publish via Path A or a manual
-   `workflow_dispatch` run, then confirm it landed.
+   **GitHub** trusted publisher: Owner `mindicator` · Repository `invAIriant` ·
+   Workflow name `publish.yml` · Environment `(Any)`. (For defense-in-depth you
+   can instead create a protected `pypi` GitHub environment, add
+   `environment: pypi` to the job, and scope the publisher to it.)
+2. **The workflow already exists**:
+   [`.github/workflows/publish.yml`](../.github/workflows/publish.yml) — OIDC
+   (`id-token: write`), builds sdist + wheel, `twine check`, then
+   `pypa/gh-action-pypi-publish`. No token, no `environment` (matches the
+   `(Any)` publisher).
+3. **First publish** — the workflow must exist on the ref you run. A GitHub
+   release *already published* before the workflow existed will not retrofire
+   `release: published`, so publish the first version by hand: Actions → *Publish
+   to PyPI* → **Run workflow** on `main` (its `pyproject` version is the one that
+   ships). Future releases auto-publish: `gh release create` fires
+   `release: published`, which checks out the tag and uploads that version.
 
 ---
 
