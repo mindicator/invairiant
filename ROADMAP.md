@@ -1,27 +1,18 @@
 # Roadmap
 
-invAIriant is at **v0.1.2**. The core protocol — evidence rules, severity
-model, lenses, schemas, prompts, the skill, and the CLI — is stable. **v0.2 is
-hardening and reach, not new surface.**
+invAIriant is at **v0.2.0**. The core protocol — evidence rules, severity
+model, lenses, schemas, prompts, the skill, and the CLI — is stable. **v0.2 was
+hardening and reach — bounded audit scopes over the same pipeline, not new
+surface.**
 
-## Guardrail: no new lenses in v0.2
+## Guardrail: no new core lenses
 
-The 28 lenses across 7 packs are the stable vocabulary. v0.2 adds **zero** new
-core lenses. New domain judgment, when a project needs it, goes through a
-custom project lens ([docs/lens-taxonomy.md](docs/lens-taxonomy.md)) — not the
-core packs.
+The 28 lenses across 7 packs are the stable vocabulary. v0.2 shipped with
+**zero** new core lenses, and that guardrail holds forward. New domain
+judgment, when a project needs it, goes through a custom project lens
+([docs/lens-taxonomy.md](docs/lens-taxonomy.md)) — not the core packs.
 
-## v0.2 — hardening & reach
-
-**Scope beyond PRs** *(landed)*
-- `invairiant collect --scope {working,range,commit,module,adr,repo}` — the
-  **audit target** (pinned scope + evidence bundle + selected lenses + report
-  type) generalized past PR diffs. One resolver turns a scope pin into a bounded
-  file set; the whole bundle is computed over that set only. Fails closed when a
-  scope can't be bounded, records the boundary in a `resolved_scope` block.
-- Skill commands `audit-range`, `audit-commit`, `audit-module`, `audit-adr` —
-  thin scope-selectors over the **same** four-stage pipeline. Still **no new
-  lenses**: a wider set of things to point the audit at, not new judgment.
+## v0.3 — hardening & reach (planned)
 
 **Packaging & distribution**
 - Publish the `invairiant` CLI to PyPI (`pip install invairiant`).
@@ -43,6 +34,19 @@ core packs.
 - The CLI ever running a lens, producing a finding, or scoring — it stays a
   judgment-free seatbelt.
 - Replacing human review, tests, SAST/DAST, threat modeling, or formal methods.
+
+## Shipped in v0.2
+
+- **Scope resolvers — the audit target beyond PRs.**
+  `invairiant collect --scope {working,range,commit,module,adr,repo}` turns a
+  scope pin into a **bounded file set**; the whole evidence bundle is computed
+  over that set only. Fails closed when a scope can't be bounded (and the ADR
+  scope refuses references that resolve too broadly — a relative bound, not just
+  an absolute cap), and records the boundary in a `resolved_scope` block.
+- **Skill commands** `audit-range`, `audit-commit`, `audit-module`, `audit-adr`
+  — thin scope-selectors over the **same** four-stage pipeline — plus the
+  unifying **audit target** concept (pinned scope + evidence bundle + selected
+  lenses + report type) in the skill and methodology. **No new lenses.**
 
 ## Shipped in v0.1
 

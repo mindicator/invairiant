@@ -5,6 +5,10 @@ follows Keep a Changelog; versions track the protocol.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] — 2026-07-04
+
 ### Added
 
 - **Scope resolvers — the audit target beyond PRs.** `invairiant collect` now
@@ -177,7 +181,8 @@ evidence, no finding.**
 - Observations and hypotheses stay separate from verified findings.
 - Default audits use 4–6 lenses, not 20.
 
-[Unreleased]: https://github.com/mindicator/invairiant/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/mindicator/invairiant/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mindicator/invairiant/releases/tag/v0.2.0
 [0.1.2]: https://github.com/mindicator/invairiant/releases/tag/v0.1.2
 [0.1.1]: https://github.com/mindicator/invairiant/releases/tag/v0.1.1
 [0.1.0]: https://github.com/mindicator/invairiant/releases/tag/v0.1.0

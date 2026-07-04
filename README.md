@@ -5,7 +5,7 @@
 <br/>
 
 [![CI](https://github.com/mindicator/invairiant/actions/workflows/validate.yml/badge.svg)](https://github.com/mindicator/invairiant/actions/workflows/validate.yml)
-[![Release: v0.1.2](https://img.shields.io/badge/release-v0.1.2-blue?style=flat-square)](https://github.com/mindicator/invairiant/releases/latest)
+[![Release: v0.2.0](https://img.shields.io/badge/release-v0.2.0-blue?style=flat-square)](https://github.com/mindicator/invairiant/releases/latest)
 [![Lenses: 28](https://img.shields.io/badge/lenses-28-8A2BE2?style=flat-square)](docs/lens-taxonomy.md)
 [![Packs: 7](https://img.shields.io/badge/packs-7-informational?style=flat-square)](lenses/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-skill-5A67D8?style=flat-square)](skill/SKILL.md)
@@ -252,12 +252,14 @@ way software is written now — with AI in the loop.**
 
 ## Status
 
-**v0.1.2.** The protocol layer — docs, 28 lenses, templates, schemas,
+**v0.2.0.** The protocol layer — docs, 28 lenses, templates, schemas,
 prompts, skill, examples — is usable as-is, and the `invairiant` CLI ships as
 a working reference implementation (scaffold · collect · validate · render ·
-gate · audit memory) with CI dogfooding it. What's next (PyPI, a GitHub Action,
-more case studies — **no new lenses**) is in [ROADMAP.md](ROADMAP.md). Treat the
-[schemas](schemas/) as the stable contract.
+gate · audit memory) with CI dogfooding it. **v0.2 adds bounded audit scopes** —
+PR, commit range, single commit, module, ADR↔code drift — over the same
+pipeline, each `collect --scope …` failing closed rather than widening, and
+**still no new lenses**. What's next (PyPI, Marketplace, more case studies) is
+in [ROADMAP.md](ROADMAP.md). Treat the [schemas](schemas/) as the stable contract.
 
 ## License
 
