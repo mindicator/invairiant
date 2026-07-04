@@ -103,12 +103,14 @@ evidence-gatherer, not a whole-repo scanner:
 | `commit` | `--commit SHA` | files touched by one commit (diff) |
 | `module` | `--path DIR\|FILE` | a snapshot of that subtree (no diff) |
 | `adr` | `--path ADR.md` | the ADR text + the tracked paths/symbols it references; `--narrow P` restricts to a subpath |
+| `rp` | `--path RP.md` | a refactoring proposal + the tracked code it references (snapshot); `--narrow P` restricts to a subpath |
 | `repo` | — | the whole repo, **explicitly unbounded** (full-audit) |
 
 `collect` **fails closed** (exit 2, `scope could not be bounded`) when a scope
-cannot be pinned — a missing `--range`, an unknown path or sha, or an ADR whose
-references don't resolve or resolve too broadly (past a safety cap, unless
-`--narrow` tightens them). It never silently widens to the whole repo; `repo`
+cannot be pinned — a missing `--range`, an unknown path or sha, or an ADR /
+refactoring proposal whose references don't resolve or resolve too broadly (past
+a bound relative to repo size, unless `--narrow` tightens them). It never
+silently widens to the whole repo; `repo`
 is the one deliberately unbounded scope. `--range A..B` with no `--scope` is a
 shorthand for `--scope range`. Every bundle carries a **`resolved_scope`** block
 (`kind`, `target`, `bounded`, `files_in_scope`, `sample_files`, `has_diff`) so

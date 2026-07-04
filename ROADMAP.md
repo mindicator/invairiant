@@ -38,15 +38,18 @@ judgment, when a project needs it, goes through a custom project lens
 ## Shipped in v0.2
 
 - **Scope resolvers — the audit target beyond PRs.**
-  `invairiant collect --scope {working,range,commit,module,adr,repo}` turns a
+  `invairiant collect --scope {working,range,commit,module,adr,rp,repo}` turns a
   scope pin into a **bounded file set**; the whole evidence bundle is computed
-  over that set only. Fails closed when a scope can't be bounded (and the ADR
-  scope refuses references that resolve too broadly — a relative bound, not just
-  an absolute cap), and records the boundary in a `resolved_scope` block.
-- **Skill commands** `audit-range`, `audit-commit`, `audit-module`, `audit-adr`
-  — thin scope-selectors over the **same** four-stage pipeline — plus the
+  over that set only. Fails closed when a scope can't be bounded (and the
+  doc-anchored `adr`/`rp` scopes refuse references that resolve too broadly — a
+  relative bound, not just an absolute cap), and records the boundary in a
+  `resolved_scope` block.
+- **Skill commands** `audit-range`, `audit-commit`, `audit-module`, `audit-adr`,
+  `audit-rp` (a refactoring proposal ↔ code — would it break invariants?) —
+  thin scope-selectors over the **same** four-stage pipeline — plus the
   unifying **audit target** concept (pinned scope + evidence bundle + selected
-  lenses + report type) in the skill and methodology. **No new lenses.**
+  lenses + report type) in the skill and methodology. Bounded scopes, not vibes;
+  **no new lenses.**
 
 ## Shipped in v0.1
 

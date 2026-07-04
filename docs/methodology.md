@@ -103,20 +103,33 @@ codebase pinned for a run. Every audit resolves to one **audit target**:
 audit target = pinned scope + evidence bundle + selected lenses + report type
 ```
 
-invAIriant pins six scope kinds: the working tree, a commit range, a single
-commit, a **module** (a directory/file subtree), an **ADR ↔ code** pair, or —
-opt-in — the whole repo. `invairiant collect --scope <kind>` resolves the pin
-to a **bounded file set** and computes the entire evidence bundle (tree,
-language stats, grep signals, generated mass) over that set *only*. It **fails
-closed**: a scope it cannot bound — a missing range, an unknown path/sha, an
-ADR whose references don't resolve or resolve too broadly — is refused, never
-silently widened to the whole repo. Every bundle records the boundary in a
-`resolved_scope` block, so what was and was not audited is explicit.
+invAIriant pins seven scope kinds: the working tree, a commit range, a single
+commit, a **module** (a directory/file subtree), an **ADR ↔ code** pair, a
+**refactoring proposal ↔ code** pair, or — opt-in — the whole repo. `invairiant
+collect --scope <kind>` resolves the pin to a **bounded file set** and computes
+the entire evidence bundle (tree, language stats, grep signals, generated mass)
+over that set *only*. It **fails closed**: a scope it cannot bound — a missing
+range, an unknown path/sha, an ADR or proposal whose references don't resolve or
+resolve too broadly — is refused, never silently widened to the whole repo.
+Every bundle records the boundary in a `resolved_scope` block, so what was and
+was not audited is explicit.
+
+Two of the doc-anchored modes are worth naming, because they catch the
+degradation that never lives in a single PR:
+
+- **`adr` — decision drift (backward-looking).** The ADR is a *made* decision;
+  the audit asks whether the code still matches it. Evidence is a contradiction
+  between the ADR text and the current code.
+- **`rp` — invariant risk (forward-looking).** A refactoring proposal is an
+  *intended* change; the code is snapshotted as it is now. The audit asks
+  whether *applying* the proposal would break an invariant the code currently
+  holds — the mirror image of `adr`. Evidence is "the proposal claims X; the
+  code relies on ¬X."
 
 The two axes compose freely: a range can drive a *tactical* audit, an ADR an
-*event-triggered* one, a module a *focused* full-scale pass. Neither axis
-changes the four-stage pipeline or the evidence discipline — only what is in
-front of them.
+*event-triggered* one, a module a *focused* full-scale pass, a refactoring
+proposal a *pre-merge invariant review*. Neither axis changes the four-stage
+pipeline or the evidence discipline — only what is in front of them.
 
 ## 5. Roles
 
@@ -155,12 +168,13 @@ everyone.
 
 ## 7. Non-goals
 
-invAIriant audits **bounded engineering scopes** — PRs, commit ranges,
-ADR ↔ code drift, modules, release gates, incidents. It does **not** perform
-general repository search or open-ended brainstorming: a scope that cannot be
-bounded is refused (`collect` fails closed), not widened to "look at
-everything". The whole-repo scope exists, but it is a deliberate `full-audit`
-choice, never a fallback.
+invAIriant audits **bounded engineering scopes, not vibes** — PRs, commit
+ranges, single commits, ADR ↔ code drift, refactoring proposals, modules,
+release gates, incidents. It does **not** perform general repository search or
+open-ended brainstorming ("AI, wander the repo and tell me what you think"):
+a scope that cannot be bounded is refused (`collect` fails closed), not widened
+to "look at everything". The whole-repo scope exists, but it is a deliberate
+`full-audit` choice, never a fallback.
 
 invAIriant is also **not**:
 

@@ -3,14 +3,16 @@ name: invairiant
 description: >
   invAIriant — an evidence-based, multi-lens architecture-audit protocol for
   LLM coding agents. This skill IS the product: it runs the audit. Commands:
-  audit-pr, audit-range, audit-commit, audit-module, audit-adr, full-audit,
-  verify-findings, classify-severity, synthesize-report, closure-verification.
+  audit-pr, audit-range, audit-commit, audit-module, audit-adr, audit-rp,
+  full-audit, verify-findings, classify-severity, synthesize-report,
+  closure-verification.
   Use when the user asks for an architecture / invariant / lens audit, an
   evidence-based review, a PR audit, an audit of a commit range, a single
-  commit, a module/directory, or ADR↔code drift, a phase-transition or
-  post-incident audit, to verify candidate findings, classify severity, or
-  synthesize an audit report — or when they type `/invairiant ...`. Every
-  finding must cite concrete evidence: no evidence, no finding.
+  commit, a module/directory, ADR↔code drift, or a refactoring proposal, a
+  phase-transition or post-incident audit, to verify candidate findings,
+  classify severity, or synthesize an audit report — or when they type
+  `/invairiant ...`. Every finding must cite concrete evidence: no evidence,
+  no finding.
 ---
 
 # invAIriant — evidence-based multi-lens architecture audit
@@ -38,11 +40,11 @@ Every invAIriant audit resolves to one **audit target**:
 audit target = pinned scope + evidence bundle + selected lenses + report type
 ```
 
-The scope-selecting commands below differ **only in the first term** — how the
-scope is pinned. The bundle shape, the four-stage pipeline, the evidence
-discipline, and the report structure are identical across all of them.
-invAIriant audits **bounded engineering scopes**; it does not perform
-open-ended repository search or brainstorming.
+PR is the main entrypoint; the other scope-selecting commands below differ
+**only in the first term** — how the scope is pinned. The bundle shape, the
+four-stage pipeline, the evidence discipline, and the report structure are
+identical across all of them. invAIriant audits **bounded engineering scopes,
+not vibes**; it does not perform open-ended repository search or brainstorming.
 
 | Scope kind | Pinned by | `collect` invocation | Natural report type |
 |---|---|---|---|
@@ -51,6 +53,7 @@ open-ended repository search or brainstorming.
 | single commit | a sha | `--scope commit --commit <sha>` | focused / post-hoc |
 | module | a dir/file path | `--scope module --path <path>` | focused audit |
 | ADR ↔ code | an ADR file | `--scope adr --path <adr.md>` | doc-drift / event |
+| refactoring proposal ↔ code | an RP file | `--scope rp --path <rp.md>` | invariant-risk review |
 | whole repo | (opt-in) | `--scope repo` | full-scale |
 
 `collect` **fails closed**: any scope it cannot bound — a missing range, an
@@ -74,6 +77,7 @@ Parse the first token of the invocation as the command. Default (no token) →
 | `audit-commit <sha> [--lenses ...]` | Audit a single commit | 1→2→3→4, report |
 | `audit-module <path> [--lenses ...]` | Audit a directory/file subtree | 1→2→3→4, report |
 | `audit-adr <adr.md> [--narrow P] [--lenses ...]` | Audit ADR ↔ code drift | 1→2→3→4, doc-drift report |
+| `audit-rp <rp.md> [--narrow P] [--lenses ...]` | Audit a refactoring proposal ↔ code: would it break invariants? | 1→2→3→4, invariant-risk report |
 | `full-audit [<range>] [--lenses ...]` | Full-scale audit: all mandatory lenses | 1→2→3→4, full report |
 | `verify-findings <candidates>` | Adversarially verify candidate findings only | stage 2 |
 | `classify-severity <verified>` | Map verified findings to severity only | stage 3 |
@@ -106,6 +110,7 @@ stage 4 never drops a rejected hypothesis.
 /invairiant audit-commit 9f3c1ac                  # one commit
 /invairiant audit-module cli/                      # a module subtree
 /invairiant audit-adr docs/adr/0012.md            # ADR ↔ code drift
+/invairiant audit-rp docs/proposals/refactor.md   # would this refactor break invariants?
 /invairiant full-audit                            # whole repo, mandatory lenses
 /invairiant verify-findings <candidate findings>  # stage 2 only
 /invairiant closure-verification                  # after a fix wave
@@ -169,7 +174,7 @@ Scope = the diff + its blast radius. Runbook:
 
 Do not merge/approve anything — present the gate.
 
-### `audit-range` · `audit-commit` · `audit-module` · `audit-adr`
+### `audit-range` · `audit-commit` · `audit-module` · `audit-adr` · `audit-rp`
 Same runbook as `audit-pr` — shared setup, collect, pipeline 1→2→3→4,
 deliverable — differing **only** in how scope is pinned at collect time and the
 natural report type. Do not re-derive the pipeline; reuse it.
@@ -179,6 +184,7 @@ natural report type. Do not re-derive the pipeline; reuse it.
    - `audit-commit <sha>` → `collect --scope commit --commit <sha>`
    - `audit-module <path>` → `collect --scope module --path <path>`
    - `audit-adr <adr.md>` → `collect --scope adr --path <adr.md> [--narrow <p>]`
+   - `audit-rp <rp.md>` → `collect --scope rp --path <rp.md> [--narrow <p>]`
 
    If `collect` exits non-zero (scope could not be bounded), **stop and report
    that** — narrow the scope (`--narrow`, a tighter path, an explicit range).
@@ -193,9 +199,19 @@ natural report type. Do not re-derive the pipeline; reuse it.
    `security-threat` + the relevant systems lens), plus the doc/code-drift
    check — the ADR text rides along in the bundle as a canonical doc, so
    contradictions between the decision and the code are first-class evidence.
+   An **RP** is the mirror image of an ADR: the proposal describes an *intended*
+   change and the bundle snapshots the code as it is *now*, so the question is
+   forward-looking — **would applying this proposal break an invariant the code
+   currently holds?** Pick the lenses that own those invariants
+   (`parnas`/boundaries, `liskov`/contracts, `security-threat`/surface, plus any
+   the proposal names), and treat "the RP claims X, the code relies on ¬X" as a
+   candidate finding.
 4. **Pipeline** 1→2→3→4, then the deliverable: for a range/commit/module,
    `invairiant render-report` (or `render-comment` for a review-style handoff);
-   for an ADR, a doc-drift report whose findings cite ADR §↔code contradictions.
+   for an ADR, a doc-drift report whose findings cite ADR §↔code contradictions;
+   for an RP, an invariant-risk report — each finding an invariant the proposal
+   would break, with the current code that holds it as evidence and a
+   preserve-it condition.
 
 ### `full-audit`
 Scope = whole system at a pinned commit. Assign roles

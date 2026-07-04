@@ -1,5 +1,5 @@
 ---
-description: invAIriant — evidence-based multi-lens architecture audit. Apply when the user asks for an architecture / invariant / lens audit, a PR audit, an evidence-based review, an audit of a commit range / single commit / module / ADR↔code drift, or types audit-pr / audit-range / audit-commit / audit-module / audit-adr / full-audit / verify-findings / classify-severity / synthesize-report / closure-verification.
+description: invAIriant — evidence-based multi-lens architecture audit. Apply when the user asks for an architecture / invariant / lens audit, a PR audit, an evidence-based review, an audit of a commit range / single commit / module / ADR↔code drift / refactoring proposal, or types audit-pr / audit-range / audit-commit / audit-module / audit-adr / audit-rp / full-audit / verify-findings / classify-severity / synthesize-report / closure-verification.
 alwaysApply: false
 ---
 
@@ -14,9 +14,10 @@ observations/hypotheses separate from verified findings.
 [`skill/SKILL.md`](../../skill/SKILL.md). In short:
 
 1. Read `invairiant.config.yml`; pick 4–6 lenses by risk surface (not 20).
-2. `invairiant collect --scope <working|range|commit|module|adr|repo>` → a
+2. `invairiant collect --scope <working|range|commit|module|adr|rp|repo>` → a
    **bounded** evidence bundle (candidate pointers, not findings); it fails
    closed if the scope can't be bounded, and audit only inside `resolved_scope`.
+   Bounded engineering scopes, not vibes.
 3. Per lens, run its `## Prompt Block` (under `lenses/`): lens pass → verify →
    classify severity → synthesize a report (`templates/audit-report.md`).
 4. `invairiant render-comment` for a PR comment; `invairiant ci-gate` to gate;

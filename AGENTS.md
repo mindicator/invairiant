@@ -24,17 +24,19 @@ or types one of these commands — run the pipeline below:
 
 - `audit-pr [<range>] [--lenses a,b]` — a PR/diff: checklist + ≤2 focused lenses
 - `audit-range <A..B>` · `audit-commit <sha>` · `audit-module <path>` ·
-  `audit-adr <adr.md>` — same pipeline, different **pinned scope** (see below)
+  `audit-adr <adr.md>` · `audit-rp <rp.md>` (refactoring proposal ↔ code) —
+  same pipeline, different **pinned scope** (see below)
 - `full-audit [<range>]` — whole repo, all mandatory lenses
 - `verify-findings` · `classify-severity` · `synthesize-report` — single stages
 - `closure-verification` — re-verify claimed fixes closed (no re-search)
 
 Every audit resolves to one **audit target** = *pinned scope + evidence bundle
 + selected lenses + report type*; the scope commands differ only in the first
-term. `invairiant collect --scope <working|range|commit|module|adr|repo>
+term. `invairiant collect --scope <working|range|commit|module|adr|rp|repo>
 [target]` resolves the pin to a **bounded** file set and **fails closed** if it
 cannot — it never silently widens to the whole repo (that is `full-audit`,
-chosen deliberately). Audit only inside the bundle's `resolved_scope`.
+chosen deliberately). invAIriant audits **bounded engineering scopes, not
+vibes**; audit only inside the bundle's `resolved_scope`.
 
 ## How to run it (the four-stage pipeline)
 
