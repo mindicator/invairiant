@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: mindicator/invairiant@v0.2.1
+      - uses: mindicator/invairiant@v0.2.2
         with:
           report: docs/audits/latest.json   # the report your /invairiant audit wrote
           max-severity: S1                   # S1 (default) blocks S0+S1; S0 blocks only S0
@@ -34,7 +34,7 @@ the gate.
 | `max-severity` | `S1` | `S1` blocks S0+S1; `S0` blocks only S0 |
 | `collect` | `false` | Also generate `invairiant-bundle.json` (an evidence bundle for an agent step or artifact) |
 | `range` | working tree | git range for `collect`, e.g. `origin/main...HEAD` |
-| `invairiant-ref` | `v0.2.1` | framework ref to run (tag / branch / sha) |
+| `invairiant-ref` | `v0.2.2` | framework ref to run (tag / branch / sha) |
 
 ## How it works
 

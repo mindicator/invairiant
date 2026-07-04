@@ -5,6 +5,10 @@ follows Keep a Changelog; versions track the protocol.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.2] — 2026-07-04
+
 ### Added
 
 - **`--scope pr` — first-class PR resolver (the main entrypoint, now backed).**
@@ -223,7 +227,8 @@ evidence, no finding.**
 - Observations and hypotheses stay separate from verified findings.
 - Default audits use 4–6 lenses, not 20.
 
-[Unreleased]: https://github.com/mindicator/invairiant/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/mindicator/invairiant/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/mindicator/invairiant/releases/tag/v0.2.2
 [0.2.1]: https://github.com/mindicator/invairiant/releases/tag/v0.2.1
 [0.2.0]: https://github.com/mindicator/invairiant/releases/tag/v0.2.0
 [0.1.2]: https://github.com/mindicator/invairiant/releases/tag/v0.1.2

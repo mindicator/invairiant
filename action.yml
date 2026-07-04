@@ -24,7 +24,7 @@ inputs:
   invairiant-ref:
     description: "Git ref of mindicator/invairiant to run (tag/branch/sha)."
     required: false
-    default: "v0.2.1"
+    default: "v0.2.2"
 
 runs:
   using: "composite"
