@@ -77,6 +77,29 @@ def _die(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
+# Human-facing color — only on a real terminal (a dev shell or a recording),
+# never when piped or in CI, and honoring NO_COLOR. Machine output stays plain,
+# so exit codes / pipes are unaffected.
+def _tty() -> bool:
+    return (sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+            and os.environ.get("TERM") != "dumb")
+
+
+def _c(code: str, s: str) -> str:
+    return f"\033[{code}m{s}\033[0m" if _tty() else s
+
+
+def _ok(s):   return _c("32", s)         # green
+def _bad(s):  return _c("31", s)         # red
+def _warn(s): return _c("33", s)         # amber
+def _dim(s):  return _c("2", s)          # dim
+
+
+def _sev(sev: str) -> str:
+    return {"S0": _c("1;31", "S0"), "S1": _c("33", "S1"), "S2": _c("36", "S2"),
+            "S3": _c("2", "S3"), "NOTE": _c("2", "NOTE")}.get(sev, sev or "?")
+
+
 def _need(module: str):
     try:
         return __import__(module)
@@ -207,10 +230,10 @@ def cmd_validate_config(args) -> int:
         errs += _check_lens_refs(data if isinstance(data, dict) else {}, p)
         total += errs
         if errs == 0:
-            print(f"  ✓ {p}")
+            print(f"  {_ok('✓')} {p}")
     if total:
         _die(f"{total} config problem(s)", 1)
-    print("OK: config valid.")
+    print(_ok("OK: config valid."))
     return 0
 
 
@@ -376,16 +399,16 @@ def cmd_validate_report(args) -> int:
         if not args.schema_only:
             serrs, warns = _semantic_report_errors(data, threshold)
             for w in warns:
-                print(f"  ⚠ {p}: {w}")
+                print(f"  {_warn('⚠')} {p}: {w}")
             for e in serrs:
-                print(f"  ✗ {p}: {e}")
+                print(f"  {_bad('✗')} {p}: {e}")
             errs += len(serrs)
         total += errs
         if errs == 0:
-            print(f"  ✓ {p}")
+            print(f"  {_ok('✓')} {p}")
     if total:
         _die(f"{total} report problem(s)", 1)
-    print("OK: report valid." + ("" if args.md or args.schema_only else " (schema + semantic)"))
+    print(_ok("OK: report valid.") + ("" if args.md or args.schema_only else " (schema + semantic)"))
     return 0
 
 
@@ -1029,9 +1052,9 @@ def cmd_collect(args) -> int:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(payload + "\n", encoding="utf-8")
         n = sum(len(v) for v in bundle["signals"].values())
-        print(f"wrote evidence bundle to {args.out} — scope={scope['kind']} "
+        print(f"wrote evidence bundle to {args.out} — scope={_c('1;36', scope['kind'])} "
               f"({resolved_scope['files_in_scope']} file(s){unb}); {n} candidate "
-              f"signal(s); raw — keep it gitignored")
+              f"signal(s); {_dim('raw — keep it gitignored')}")
     else:
         print(payload)
     return 0
@@ -1190,13 +1213,14 @@ def cmd_ci_gate(args) -> int:
         if f.get("severity") in blocked and f.get("status") != "rejected"
     ]
     verdict = data.get("summary", {}).get("verdict")
-    print(f"ci-gate: blocking severities {sorted(blocked)}; report verdict: {verdict}")
+    vc = _bad(verdict) if verdict == "fail" else _ok(verdict) if verdict == "pass" else _warn(str(verdict))
+    print(_dim(f"ci-gate: blocking {sorted(blocked)}; verdict: ") + vc)
     if open_blocking:
-        print(f"FAILED: {len(open_blocking)} open blocking finding(s):")
+        print(_c("1;31", f"FAILED: {len(open_blocking)} open blocking finding(s):"))
         for f in open_blocking:
-            print(f"  ✗ {f.get('id','?')} [{f.get('severity')}] {f.get('claim','')[:90]}")
+            print(f"  {_bad('✗')} {f.get('id','?')} [{_sev(f.get('severity'))}] {f.get('claim','')[:90]}")
         return 1
-    print("OK: no open S0/S1 findings.")
+    print(_ok("OK: no open S0/S1 findings."))
     return 0
 
 
