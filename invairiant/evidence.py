@@ -47,7 +47,8 @@ def _sha_matches(a: str, b: str) -> bool:
     return n >= 7 and a[:n] == b[:n]
 
 
-def _provenance_check(report: dict, commit=None, bundle=None, require=False):
+def _provenance_check(report: dict, commit=None, bundle=None, require=False,
+                      require_exact_bundle=False):
     """Mechanical provenance verification (issue #2): does the report bind to the
     commit — and, if a bundle is given, to that bundle — it claims to be built
     from? Judgment-free: hashing and equality only, never whether a finding is
@@ -55,7 +56,10 @@ def _provenance_check(report: dict, commit=None, bundle=None, require=False):
 
     Hard checks (portable, deterministic) are errors; content-level cross-machine
     signals (scope_hash / bundle_hash mismatch vs a freshly-collected bundle) are
-    warnings, so the gate does not flake across environments."""
+    warnings by default, so the gate does not flake across environments.
+    `require_exact_bundle` promotes those two to errors — for when `collect` runs
+    identically in both places and you want to *prove* the report came from this
+    exact bundle, not merely from some bundle at the same commit."""
     errs, warns = [], []
     prov = report.get("provenance")
     if not prov:
@@ -85,15 +89,16 @@ def _provenance_check(report: dict, commit=None, bundle=None, require=False):
         if prov.get("commit_sha") and bp.get("commit_sha") and \
                 not _sha_matches(prov["commit_sha"], bp["commit_sha"]):
             errs.append("report.commit_sha does not match the bundle's commit_sha")
+        sink = errs if require_exact_bundle else warns
         if prov.get("scope_hash") and bp.get("scope_hash") and \
                 prov["scope_hash"] != bp["scope_hash"]:
-            warns.append("report.scope_hash differs from the bundle's — the report may "
-                         "cover a different scope than this bundle")
+            sink.append("report.scope_hash differs from the bundle's — the report may "
+                        "cover a different scope than this bundle")
         if prov.get("bundle_hash") and bp.get("bundle_hash") and \
                 prov["bundle_hash"] != bp["bundle_hash"]:
-            warns.append("report.bundle_hash differs from this bundle's — the report was "
-                         "built from a different bundle (expected only if collect ran in a "
-                         "different layout)")
+            sink.append("report.bundle_hash differs from this bundle's — the report was "
+                        "built from a different bundle (expected only if collect ran in a "
+                        "different layout)")
     return errs, warns
 
 
@@ -437,13 +442,16 @@ def cmd_verify_provenance(args) -> int:
     """Prove a report is bound to its commit — and, with --bundle, to the evidence
     bundle it was built from. Mechanical integrity only; the CLI never judges a
     finding. The report half of report↔bundle↔commit (issue #2)."""
+    exact = getattr(args, "require_exact_bundle", False)
+    if exact and not args.bundle:
+        _die("--require-exact-bundle needs --bundle to compare against", 3)
     report = _load_json(args.report, "report")
     bundle = _load_json(args.bundle, "bundle") if args.bundle else None
     commit = args.commit
     if commit is None:                       # default: bind to git HEAD when in a repo
         commit = _git(["rev-parse", "HEAD"]) or None
     errs, warns = _provenance_check(report, commit=commit, bundle=bundle,
-                                    require=args.require)
+                                    require=args.require, require_exact_bundle=exact)
     for w in warns:
         print(f"  {_warn('⚠')} {w}")
     for e in errs:

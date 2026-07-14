@@ -38,8 +38,22 @@ follows Keep a Changelog; versions track the protocol.
   truth. Additive: existing bundles and reports stay valid (the warning is a
   nudge, slated to become an error in a later release).
 
+### Fixed
+
+- **The bundled Action no longer breaks on an older `invairiant-ref`.** The
+  `verify-provenance` step now detects whether the resolved CLI has that
+  subcommand and **skips cleanly** if not (older pinned refs predate it),
+  instead of failing the job with an unknown-command error. It auto-activates
+  once the ref includes the command.
+
 ### Changed
 
+- **`verify-provenance --require-exact-bundle`** (issue
+  [#2](https://github.com/mindicator/invairiant/issues/2)). With `--bundle`, the
+  `scope_hash` / `bundle_hash` mismatches are promoted from warnings to
+  **errors**, so a report built from a *different* bundle at the same commit is
+  rejected rather than merely flagged. For use when `collect` runs identically
+  in both places; left off by default so heterogeneous environments don't flake.
 - **Verifier provenance fields + `validate-report --strict`** (issue
   [#2](https://github.com/mindicator/invairiant/issues/2)). A finding's
   `verification` object may now record `model` (the verifying model) and `run`

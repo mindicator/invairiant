@@ -227,6 +227,12 @@ class TestVerifyProvenance:
         proc = _run(cli_path, repo_root, "verify-provenance", str(rp), "--require")
         assert proc.returncode == 1
 
+    def test_require_exact_bundle_needs_a_bundle(self, cli_path, repo_root, tmp_path):
+        rp = tmp_path / "r.json"
+        rp.write_text(json.dumps({"provenance": {"commit_sha": "a" * 40}}), encoding="utf-8")
+        proc = _run(cli_path, repo_root, "verify-provenance", str(rp), "--require-exact-bundle")
+        assert proc.returncode == 3  # usage error: nothing to compare against
+
 
 # --------------------------------------------------------------------------- #
 # validate-report --strict (promote provenance-completeness nudges to errors)

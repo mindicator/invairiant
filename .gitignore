@@ -38,8 +38,11 @@ scratchpad/
 tmp/
 *.tmp
 
-# Stray spreadsheets dropped into the working dir (not part of the framework)
+# Stray documents dropped into the working dir (not part of the framework).
+# The framework ships no spreadsheets or PDFs; ignore them so a stray file can't
+# be committed by accident. `git add -f` if one is ever genuinely part of it.
 *.xlsx
+*.pdf
 
 # Python build/install artifacts
 *.egg-info/

@@ -426,3 +426,27 @@ class TestProvenanceCheck:
         report = self._rep(commit_sha="f" * 40, bundle_hash=b["provenance"]["bundle_hash"])
         errs, _ = cli._provenance_check(report, bundle=b)
         assert any("does not match the bundle's commit_sha" in e for e in errs)
+
+    def test_require_exact_bundle_promotes_bundle_hash_mismatch_to_error(self, cli):
+        b = self._bundle(commit_sha="a" * 40, scope_hash="b" * 64)
+        b["provenance"]["bundle_hash"] = cli._recompute_bundle_hash(b)
+        report = self._rep(commit_sha="a" * 40, scope_hash="b" * 64, bundle_hash="c" * 64)
+        errs, warns = cli._provenance_check(report, bundle=b, require_exact_bundle=True)
+        assert any("bundle_hash differs" in e for e in errs)
+        assert not any("bundle_hash differs" in w for w in warns)
+
+    def test_require_exact_bundle_promotes_scope_hash_mismatch_to_error(self, cli):
+        b = self._bundle(commit_sha="a" * 40, scope_hash="b" * 64)
+        b["provenance"]["bundle_hash"] = cli._recompute_bundle_hash(b)
+        report = self._rep(commit_sha="a" * 40, scope_hash="d" * 64,
+                           bundle_hash=b["provenance"]["bundle_hash"])
+        errs, _ = cli._provenance_check(report, bundle=b, require_exact_bundle=True)
+        assert any("scope_hash differs" in e for e in errs)
+
+    def test_require_exact_bundle_clean_when_it_matches(self, cli):
+        b = self._bundle(commit_sha="a" * 40, scope_hash="b" * 64)
+        b["provenance"]["bundle_hash"] = cli._recompute_bundle_hash(b)
+        report = self._rep(commit_sha="a" * 40, scope_hash="b" * 64,
+                           bundle_hash=b["provenance"]["bundle_hash"])
+        errs, _ = cli._provenance_check(report, bundle=b, require_exact_bundle=True)
+        assert errs == []

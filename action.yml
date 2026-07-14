@@ -100,15 +100,25 @@ runs:
         REPORT: ${{ inputs.report }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         REQUIRE: ${{ inputs.require-provenance }}
+        REF: ${{ inputs.invairiant-ref }}
       run: |
         set -euo pipefail
+        CLI="$INVAIRIANT_HOME/cli/invairiant.py"
+        # `verify-provenance` is newer than some pinned `invairiant-ref` values
+        # (e.g. the default release tag before it shipped). If the resolved CLI
+        # doesn't have the subcommand, skip cleanly instead of failing the build.
+        if ! python "$CLI" verify-provenance --help >/dev/null 2>&1; then
+          echo "note: 'verify-provenance' is not available in invairiant-ref '$REF' —"
+          echo "      skipping provenance verification (bump invairiant-ref to enable it)."
+          exit 0
+        fi
         args=(verify-provenance "$REPORT")
         # pull_request checkouts are a synthetic merge ref — bind to the PR head sha.
         if [ -n "${HEAD_SHA:-}" ];               then args+=(--commit "$HEAD_SHA"); fi
         # compare against the bundle freshly collected this run, if any.
         if [ -f invairiant-bundle.json ];        then args+=(--bundle invairiant-bundle.json); fi
         if [ "${REQUIRE:-false}" = "true" ];     then args+=(--require); fi
-        python "$INVAIRIANT_HOME/cli/invairiant.py" "${args[@]}"
+        python "$CLI" "${args[@]}"
 
     - name: Render report into the job summary
       if: ${{ always() && inputs.report != '' }}

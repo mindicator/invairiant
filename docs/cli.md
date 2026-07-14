@@ -209,7 +209,7 @@ as `validate-report`. Wire it into CI after the agent files a report:
 - run: python3 cli/invairiant.py ci-gate docs/audits/latest.json
 ```
 
-### `invairiant verify-provenance <report.json> [--bundle B] [--commit SHA] [--require]`
+### `invairiant verify-provenance <report.json> [--bundle B] [--commit SHA] [--require] [--require-exact-bundle]`
 Prove a report is **bound** to the commit — and, with `--bundle`, to the evidence
 bundle — it was built from. Mechanical integrity only (hashing + equality); the
 CLI never decides whether a finding is real. The verification half of the
@@ -224,6 +224,14 @@ Checks, split so a CI gate does not flake across machines:
 - **warnings** — a missing `provenance` block (unless `--require`), or a
   `scope_hash` / `bundle_hash` that differs from the given bundle's (a
   content-level signal that can differ benignly across environments).
+
+`--require` promotes a missing `provenance` block to an error.
+**`--require-exact-bundle`** (needs `--bundle`) promotes the `scope_hash` /
+`bundle_hash` mismatch **warnings to errors** — so a report from a *different*
+bundle at the same commit no longer merely warns. Use it when `collect` runs
+identically in both places (so `bundle_hash` is reproducible) and you want to
+prove the report came from **this exact bundle**; leave it off across
+heterogeneous environments, where the content hashes can differ benignly.
 
 The bundled [GitHub Action](../action.yml) runs this after `validate-report`,
 binding to the PR head sha and, when `collect` ran, to the freshly-gathered

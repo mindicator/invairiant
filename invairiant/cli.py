@@ -130,6 +130,10 @@ def main(argv=None) -> int:
                      help="the audited commit to bind to (default: git HEAD)")
     pvp.add_argument("--require", action="store_true",
                      help="fail if the report carries no provenance block (default: warn)")
+    pvp.add_argument("--require-exact-bundle", action="store_true",
+                     help="with --bundle: fail (not warn) if the report's scope_hash/bundle_hash "
+                          "differ from the bundle's — proves it came from THIS exact bundle "
+                          "(needs deterministic collect in both places)")
     pvp.set_defaults(func=cmd_verify_provenance)
 
     prr = sub.add_parser("render-report", help="deterministically render a report JSON to Markdown")
