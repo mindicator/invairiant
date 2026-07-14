@@ -22,6 +22,7 @@ Full spec: docs/cli.md. Requires Python 3.9+; validation/collection need
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -98,6 +99,13 @@ def _dim(s):  return _c("2", s)          # dim
 def _sev(sev: str) -> str:
     return {"S0": _c("1;31", "S0"), "S1": _c("33", "S1"), "S2": _c("36", "S2"),
             "S3": _c("2", "S3"), "NOTE": _c("2", "NOTE")}.get(sev, sev or "?")
+
+
+def _sha256(obj) -> str:
+    """Stable sha256 over a JSON-serializable value (sorted keys, no whitespace)."""
+    return hashlib.sha256(
+        json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _need(module: str):
@@ -310,6 +318,13 @@ def _semantic_report_errors(data: dict, low_threshold: float):
     for f in findings:
         if f.get("severity") in ("S0", "S1") and f.get("confidence") not in ("high", "medium"):
             errs.append(f"{f.get('id')}: {f.get('severity')} requires confidence high/medium (got {f.get('confidence')})")
+        # provenance: a 'verified' finding should carry a verification record
+        # (who re-checked it, how). Warn now; slated to become an error (issue #2).
+        if f.get("status") == "verified":
+            v = f.get("verification") or {}
+            if not (v.get("verified_by") and v.get("method")):
+                warns.append(f"{f.get('id')}: status 'verified' but no verification record "
+                             "(verified_by + method) — provenance incomplete")
     # verdict must derive from open findings, never from score averages
     verdict = (data.get("summary") or {}).get("verdict")
     openf = [f for f in findings if f.get("status") != "rejected"]
@@ -1046,6 +1061,18 @@ def cmd_collect(args) -> int:
         "known_rejected": _known_rejected(),
         "limits": budget,
     }
+    # provenance — bind this bundle to its commit + resolved scope. Structure
+    # only (the CLI still never judges truth); it lets a later report/Action
+    # prove it was built from THIS bundle at THIS commit. bundle_hash covers the
+    # whole bundle incl. commit_sha + scope_hash; recompute it over the bundle
+    # minus provenance.bundle_hash to verify.
+    bundle["provenance"] = {
+        "commit_sha": git_info["head"],
+        "scope_hash": _sha256({"kind": scope["kind"], "target": scope["target"],
+                               "files": sorted(scope["files"])}),
+        "generated_by": "invairiant collect",
+    }
+    bundle["provenance"]["bundle_hash"] = _sha256(bundle)
     payload = json.dumps(bundle, indent=2, ensure_ascii=False)
     unb = "" if scope["bounded"] else ", UNBOUNDED"
     if args.out:

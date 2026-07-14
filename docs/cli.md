@@ -72,7 +72,10 @@ protocol rules a schema cannot express:
   no finding and no `evidence_refs` is flagged (warning);
 - `required_actions` reference real finding ids;
 - the report keeps a `hypotheses` section (rejected hypotheses are not
-  deleted).
+  deleted);
+- a finding marked `status: verified` carries a `verification` record
+  (`verified_by` + `method`) — **warning** for now, so provenance is visible
+  before it becomes required.
 
 `--schema-only` runs just the schema check. `--md` structurally lints a
 **rendered markdown** report (H1, sections, verdict, kept hypotheses present) —
@@ -127,6 +130,12 @@ is the one deliberately unbounded scope. `--range A..B` with no `--scope` is a
 shorthand for `--scope range`. Every bundle carries a **`resolved_scope`** block
 (`kind`, `target`, `bounded`, `files_in_scope`, `sample_files`, `has_diff`) so
 the boundary is explicit and auditable.
+
+Every bundle also carries a **`provenance`** block — `commit_sha`, `scope_hash`,
+and a `bundle_hash` (sha256 over the bundle minus itself). This binds the bundle
+to the commit and scope it was built from, so a downstream report/Action can
+prove it was built from *this* bundle and that the bundle wasn't edited. It is
+integrity, not judgment — the CLI still never decides whether a finding is real.
 
 **Everything in the bundle is a candidate pointer, not a finding** — it is
 input for the `/invairiant` skill, which applies lenses; only verified,

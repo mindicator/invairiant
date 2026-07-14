@@ -9,6 +9,17 @@
   "properties": {
     "schema": { "const": "invairiant.evidence-bundle/v1" },
     "notice": { "type": "string" },
+    "provenance": {
+      "type": "object",
+      "description": "Binds this bundle to the commit and resolved scope it was built from — integrity, not judgment. A report can carry these so a later step proves it was built from THIS bundle at THIS commit. `bundle_hash` is the sha256 of the whole bundle (sorted-key canonical JSON) with `provenance.bundle_hash` removed; recompute it to verify the bundle was not edited.",
+      "additionalProperties": true,
+      "properties": {
+        "commit_sha": { "type": "string" },
+        "scope_hash": { "type": "string", "description": "sha256 over {kind, target, sorted files} of the resolved scope." },
+        "bundle_hash": { "type": "string", "description": "sha256 over the bundle minus provenance.bundle_hash." },
+        "generated_by": { "type": "string" }
+      }
+    },
     "generated_for": {
       "type": "object",
       "additionalProperties": true,

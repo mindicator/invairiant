@@ -146,6 +146,22 @@ class TestSemanticReportErrors:
         errs, _ = cli._semantic_report_errors(d, 6.0)
         assert any("confidence" in e for e in errs)
 
+    def test_verified_without_verification_warns(self, cli, base_report):
+        d = base_report()
+        d["findings"] = [self._finding(id="T-1", status="verified")]  # no verification record
+        d["summary"]["verdict"] = "pass_with_conditions"
+        errs, warns = cli._semantic_report_errors(d, 6.0)
+        assert not any("provenance" in e for e in errs)   # warn, not error
+        assert any("verified" in w and "provenance" in w for w in warns)
+
+    def test_verified_with_verification_is_clean(self, cli, base_report):
+        d = base_report()
+        d["findings"] = [self._finding(id="T-1", status="verified",
+                                       verification={"verified_by": "agent-2", "method": "re-read cited lines"})]
+        d["summary"]["verdict"] = "pass_with_conditions"
+        _, warns = cli._semantic_report_errors(d, 6.0)
+        assert not any("provenance" in w for w in warns)
+
     def test_lens_score_evidence_ref_to_unknown_finding_is_error(self, cli, base_report):
         d = base_report()
         d["findings"] = [self._finding(id="T-001")]

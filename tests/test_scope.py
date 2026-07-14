@@ -260,3 +260,18 @@ class TestScopedScanE2E:
         r = subprocess.run(["python3", str(cli_path), "collect", "--scope", "module",
                             "--path", "does/not/exist"], cwd=repo_root, capture_output=True)
         assert r.returncode == 2 and b"could not be bounded" in r.stderr
+
+
+class TestProvenance:
+    def test_collect_emits_verifiable_provenance(self, cli, cli_path, repo_root, tmp_path):
+        out = tmp_path / "b.json"
+        subprocess.run(["python3", str(cli_path), "collect", "--scope", "module",
+                        "--path", "cli", "--out", str(out)],
+                       cwd=repo_root, check=True, capture_output=True)
+        d = json.loads(out.read_text(encoding="utf-8"))
+        p = d["provenance"]
+        assert p["commit_sha"] and len(p["scope_hash"]) == 64 and len(p["bundle_hash"]) == 64
+        # bundle_hash recomputes over the bundle minus provenance.bundle_hash →
+        # proves the bundle wasn't edited after collect wrote it.
+        bh = d["provenance"].pop("bundle_hash")
+        assert cli._sha256(d) == bh

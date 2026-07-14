@@ -5,7 +5,17 @@ follows Keep a Changelog; versions track the protocol.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Evidence provenance — first step** (from external review, [#2](https://github.com/mindicator/invairiant/issues/2)).
+  `collect` now emits a `provenance` block: `commit_sha`, `scope_hash`, and a
+  `bundle_hash` that recomputes over the bundle (minus itself) — so a later step
+  can prove a report was built from **this** bundle at **this** commit, and that
+  the bundle wasn't edited after the fact. `validate-report` now **warns** when a
+  finding is `status: verified` without a `verification` record (`verified_by` +
+  `method`). Both are structure/integrity checks — the CLI still never judges
+  truth. Additive: existing bundles and reports stay valid (the warning is a
+  nudge, slated to become an error in a later release).
 
 ## [0.2.5] — 2026-07-04
 
