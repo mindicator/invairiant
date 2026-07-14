@@ -11,6 +11,7 @@ import re
 import shutil
 from pathlib import Path
 
+from .models import ResolvedScope, ScopeKind
 from .subprocesses import _MAX_FILE_BYTES, _is_probably_binary, _ls_files, _run
 
 # A scope resolver turns a bounded scope (kind + target) into a file set, so
@@ -80,7 +81,7 @@ def _default_base_ref(remote: str):
     return None
 
 
-def _resolve_pr(args) -> dict:
+def _resolve_pr(args) -> ResolvedScope:
     """Optional PR resolver ADAPTER. Core scopes are pure-local; ONLY --scope pr
     may reach the remote (gh, or the pull/<n>/head ref). A PR resolves to an
     ordinary bounded base...head range — the same shape as --scope range. If it
@@ -152,15 +153,15 @@ def _resolve_pr(args) -> dict:
     # from git). Flag it so collect can warn.
     cur = _run(["git", "rev-parse", "HEAD"])[1].strip()
     head_checked_out = bool(cur) and cur == head_sha
-    return {"kind": "pr", "target": num, "files": files, "diff": diff or None,
-            "docs": [], "bounded": True, "range": rng,
-            "base": base_ref, "head": head_disp, "resolver": resolver,
-            "head_checked_out": head_checked_out,
-            "note": f"PR #{num} ({base_ref}...{head_disp}) via {resolver} "
-                    f"({len(files)} file(s))"}
+    return ResolvedScope(
+        kind=ScopeKind.pr, target=num, files=tuple(files), bounded=True,
+        diff=diff or None, range=rng, base=base_ref, head=head_disp,
+        resolver=resolver, head_checked_out=head_checked_out,
+        note=f"PR #{num} ({base_ref}...{head_disp}) via {resolver} "
+             f"({len(files)} file(s))")
 
 
-def _resolve_scope(args) -> dict:
+def _resolve_scope(args) -> ResolvedScope:
     """Deterministically bound the audit scope. Raises ScopeError (fail closed)
     when a scope cannot be bounded."""
     kind = getattr(args, "scope", None) or ("range" if args.range else "working")
@@ -172,9 +173,9 @@ def _resolve_scope(args) -> dict:
         _, names, _ = _run(["git", "status", "--porcelain"])
         files = [l[3:] for l in names.splitlines() if l.strip()]
         _, diff, _ = _run(["git", "diff"])
-        return {"kind": kind, "target": "working tree", "files": files,
-                "diff": diff or None, "docs": [], "bounded": True,
-                "note": "uncommitted working-tree changes"}
+        return ResolvedScope(kind=ScopeKind.working, target="working tree",
+                             files=tuple(files), diff=diff or None, bounded=True,
+                             note="uncommitted working-tree changes")
 
     if kind == "range":
         rng = args.range
@@ -185,8 +186,9 @@ def _resolve_scope(args) -> dict:
             raise ScopeError(f"range '{rng}' did not resolve ({err.strip()[:120]})")
         files = [f for f in names.splitlines() if f.strip()]
         _, diff, _ = _run(["git", "diff", rng])
-        return {"kind": kind, "target": rng, "files": files, "diff": diff or None,
-                "docs": [], "bounded": True, "note": f"files changed in {rng}"}
+        return ResolvedScope(kind=ScopeKind.range, target=rng, files=tuple(files),
+                             diff=diff or None, bounded=True,
+                             note=f"files changed in {rng}")
 
     if kind == "commit":
         sha = args.commit
@@ -197,8 +199,9 @@ def _resolve_scope(args) -> dict:
             raise ScopeError(f"commit '{sha}' did not resolve ({err.strip()[:120]})")
         files = [f for f in names.splitlines() if f.strip()]
         _, diff, _ = _run(["git", "show", sha])
-        return {"kind": kind, "target": sha, "files": files, "diff": diff or None,
-                "docs": [], "bounded": True, "note": f"files in commit {sha[:12]}"}
+        return ResolvedScope(kind=ScopeKind.commit, target=sha, files=tuple(files),
+                             diff=diff or None, bounded=True,
+                             note=f"files in commit {sha[:12]}")
 
     if kind == "module":
         path = args.path
@@ -209,9 +212,9 @@ def _resolve_scope(args) -> dict:
         files = _ls_files(path)
         if not files:
             raise ScopeError(f"module path '{path}' has no tracked files")
-        return {"kind": kind, "target": path, "files": files, "diff": None,
-                "docs": [], "bounded": True, "snapshot": True,
-                "note": f"tracked files under {path} (snapshot)"}
+        return ResolvedScope(kind=ScopeKind.module, target=path, files=tuple(files),
+                             bounded=True, snapshot=True,
+                             note=f"tracked files under {path} (snapshot)")
 
     if kind in ("adr", "rp"):
         # A doc-vs-code scope: a decision/proposal document plus the tracked code
@@ -266,30 +269,31 @@ def _resolve_scope(args) -> dict:
                 f"{label} references resolved too broadly ({len(files)} of {len(tracked)} "
                 f"tracked files, over the {broad_limit}-file bound); re-run with "
                 f"--narrow <path> to pin {pin}")
-        return {"kind": kind, "target": src, "files": files, "diff": None, "docs": docs,
-                "bounded": True, "snapshot": True,
-                "note": f"{label} + the code it references ({len(files)} files)"
-                        + (f", narrowed to {narrow}" if narrow else "")}
+        return ResolvedScope(
+            kind=ScopeKind(kind), target=src, files=tuple(files), docs=tuple(docs),
+            bounded=True, snapshot=True,
+            note=f"{label} + the code it references ({len(files)} files)"
+                 + (f", narrowed to {narrow}" if narrow else ""))
 
     if kind == "repo":
-        return {"kind": kind, "target": "whole repo", "files": _ls_files(), "diff": None,
-                "docs": [], "bounded": False,
-                "note": "explicitly unbounded (full-audit scope)"}
+        return ResolvedScope(kind=ScopeKind.repo, target="whole repo",
+                             files=tuple(_ls_files()), bounded=False,
+                             note="explicitly unbounded (full-audit scope)")
 
     raise ScopeError(f"unknown scope '{kind}'")
 
 
-def _scope_detail(scope: dict) -> dict:
+def _scope_detail(scope: ResolvedScope) -> dict:
     """The change detail (name-status + diffstat) for change scopes; a snapshot
     summary otherwise."""
-    kind, target = scope["kind"], scope["target"]
+    kind, target = scope.kind, scope.target
     if kind == "commit":
         _, ns, _ = _run(["git", "show", "--name-status", "--format=", target])
         _, st, _ = _run(["git", "show", "--stat", "--format=", target])
         changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
                    for l in ns.splitlines() if "\t" in l]
     elif kind in ("range", "pr"):
-        rng = scope.get("range") or target   # pr's target is a number; use its range
+        rng = scope.range or target   # pr's target is a number; use its range
         _, ns, _ = _run(["git", "diff", "--name-status", rng])
         _, st, _ = _run(["git", "diff", "--stat", rng])
         changed = [{"status": l.split("\t")[0], "file": l.split("\t")[-1]}
@@ -300,7 +304,7 @@ def _scope_detail(scope: dict) -> dict:
         changed = [{"status": l[:2].strip(), "file": l[3:]}
                    for l in ns.splitlines() if l.strip()]
     else:  # module / adr / rp / repo — a snapshot, not a change
-        return {"kind": kind, "target": target, "snapshot": True,
+        return {"kind": kind.value, "target": target, "snapshot": True,
                 "changed_files": [], "diffstat": ""}
-    return {"kind": kind, "target": target, "changed_files": changed,
+    return {"kind": kind.value, "target": target, "changed_files": changed,
             "diffstat": st.strip()[:4000]}

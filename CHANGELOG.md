@@ -19,6 +19,13 @@ follows Keep a Changelog; versions track the protocol.
 
 ### Changed
 
+- **Typed scope models.** The scope resolvers now return a frozen
+  `ResolvedScope` dataclass with a `ScopeKind` enum instead of a loose `dict`,
+  so a field-name typo (`scope.head_cheked_out`) fails loudly at attribute
+  access instead of silently reading `None`, and the set of scope kinds is
+  explicit. `ScopeKind` is `str`-valued, so the emitted evidence bundle is
+  byte-for-byte identical (verified across every scope kind, old CLI vs new,
+  over a fixed repo).
 - **The CLI is now a package**, `invairiant/`, split from the single
   ~1500-line `cli/invairiant.py` into focused modules
   (`cli` / `scopes` / `schemas` / `evidence` / `render` / `history` /

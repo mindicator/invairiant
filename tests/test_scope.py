@@ -68,29 +68,58 @@ def _init_git_repo(path):
 class TestResolvers:
     def test_working_is_default(self, cli):
         s = cli._resolve_scope(_ns())
-        assert s["kind"] == "working" and s["bounded"] is True
+        assert s.kind == "working" and s.bounded is True
 
     def test_range_inferred_from_flag(self, cli, tmp_path, monkeypatch):
         _init_git_repo(tmp_path)
         monkeypatch.chdir(tmp_path)
         s = cli._resolve_scope(_ns(range="HEAD~1..HEAD"))
-        assert s["kind"] == "range" and s["bounded"] and s["diff"]
-        assert s["files"] == ["b.txt"]
+        assert s.kind == "range" and s.bounded and s.diff
+        assert s.files == ("b.txt",)
 
     def test_commit(self, cli, tmp_path, monkeypatch):
         _init_git_repo(tmp_path)
         monkeypatch.chdir(tmp_path)
         s = cli._resolve_scope(_ns(scope="commit", commit="HEAD"))
-        assert s["kind"] == "commit" and s["diff"] and s["files"] == ["b.txt"]
+        assert s.kind == "commit" and s.diff and s.files == ("b.txt",)
 
     def test_module_is_bounded_snapshot(self, cli):
         s = cli._resolve_scope(_ns(scope="module", path="cli"))
-        assert s["kind"] == "module" and s["diff"] is None and s["files"]
-        assert all(f.startswith("cli/") for f in s["files"])
+        assert s.kind == "module" and s.diff is None and s.files
+        assert all(f.startswith("cli/") for f in s.files)
 
     def test_repo_is_explicitly_unbounded(self, cli):
         s = cli._resolve_scope(_ns(scope="repo"))
-        assert s["kind"] == "repo" and s["bounded"] is False and len(s["files"]) > 10
+        assert s.kind == "repo" and s.bounded is False and len(s.files) > 10
+
+
+class TestTypedScope:
+    """#2: resolvers return a typed, frozen ResolvedScope — not a bare dict — so
+    a field-name typo fails loudly instead of silently reading None, and `kind`
+    is a ScopeKind enum (that still compares/serializes as its string)."""
+
+    def test_kind_is_scopekind_enum(self, cli):
+        s = cli._resolve_scope(_ns(scope="module", path="cli"))
+        assert isinstance(s, cli.ResolvedScope)
+        assert s.kind is cli.ScopeKind.module and s.kind == "module"
+
+    def test_field_typo_raises_not_silent_none(self, cli):
+        s = cli._resolve_scope(_ns(scope="module", path="cli"))
+        with pytest.raises(AttributeError):
+            _ = s.head_cheked_out          # the exact typo #2 was meant to catch
+
+    def test_scope_is_frozen(self, cli):
+        import dataclasses
+        s = cli._resolve_scope(_ns(scope="module", path="cli"))
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            s.bounded = False
+
+    def test_resolved_block_serializes_kind_as_plain_string(self, cli):
+        s = cli._resolve_scope(_ns(scope="module", path="cli"))
+        b = s.resolved_block()
+        assert b["kind"] == "module" and b["files_in_scope"] == len(s.files)
+        assert {"kind", "target", "bounded", "files_in_scope", "sample_files",
+                "has_diff", "docs", "note"} <= set(b)
 
 
 class TestFailClosed:
@@ -116,14 +145,14 @@ class TestADR:
         adr = tmp_path / "adr.md"
         adr.write_text("ADR: the resolver lives in `cli/invairiant.py` via `_resolve_scope`.")
         s = cli._resolve_scope(_ns(scope="adr", path=str(adr)))
-        assert s["kind"] == "adr" and "cli/invairiant.py" in s["files"]
-        assert s["docs"] and s["docs"][0]["path"] == str(adr)
+        assert s.kind == "adr" and "cli/invairiant.py" in s.files
+        assert s.docs and s.docs[0]["path"] == str(adr)
 
     def test_narrow_restricts_scope(self, cli, tmp_path):
         adr = tmp_path / "adr.md"
         adr.write_text("references `cli/invairiant.py` and `README.md`")
         s = cli._resolve_scope(_ns(scope="adr", path=str(adr), narrow="cli"))
-        assert s["files"] and all(f.startswith("cli/") for f in s["files"])
+        assert s.files and all(f.startswith("cli/") for f in s.files)
 
     def test_no_references_fails_closed(self, cli, tmp_path):
         adr = tmp_path / "adr.md"
@@ -146,7 +175,7 @@ class TestADR:
 
     def test_too_broad_recovers_with_narrow(self, cli, tmp_path):
         s = cli._resolve_scope(_ns(scope="adr", path=self._broad_adr(tmp_path), narrow="cli"))
-        assert s["files"] and all(f.startswith("cli/") for f in s["files"])
+        assert s.files and all(f.startswith("cli/") for f in s.files)
 
     def test_broad_limit_is_relative_to_repo_size(self, cli):
         assert cli._adr_broad_limit(10) == cli._ADR_BROAD_FLOOR      # floor on tiny repos
@@ -162,9 +191,9 @@ class TestRP:
         rp.write_text("Proposal: split the resolver in `cli/invairiant.py` "
                       "(`_resolve_scope`) into per-kind handlers.")
         s = cli._resolve_scope(_ns(scope="rp", path=str(rp)))
-        assert s["kind"] == "rp" and "cli/invairiant.py" in s["files"]
-        assert s["snapshot"] is True and s["diff"] is None
-        assert s["docs"] and s["docs"][0]["path"] == str(rp)
+        assert s.kind == "rp" and "cli/invairiant.py" in s.files
+        assert s.snapshot is True and s.diff is None
+        assert s.docs and s.docs[0]["path"] == str(rp)
 
     def test_missing_path_fails(self, cli):
         with pytest.raises(cli.ScopeError):
@@ -217,17 +246,17 @@ class TestPR:
         consumer = _init_pr_repo(tmp_path)
         monkeypatch.chdir(consumer)                    # on main, NOT the PR head
         s = cli._resolve_scope(_ns(scope="pr", pr="1"))
-        assert s["kind"] == "pr" and s["bounded"] is True
-        assert s["files"] == ["feature.txt"]          # the PR's changed file only
-        assert s["diff"] and s["range"] and "..." in s["range"]
-        assert s["base"].endswith("/main") and s["resolver"] == "git"
-        assert s["head_checked_out"] is False          # #3: drives the sparse-signals notice
+        assert s.kind == "pr" and s.bounded is True
+        assert s.files == ("feature.txt",)            # the PR's changed file only
+        assert s.diff and s.range and "..." in s.range
+        assert s.base.endswith("/main") and s.resolver == "git"
+        assert s.head_checked_out is False             # #3: drives the sparse-signals notice
 
     def test_head_checked_out_true_on_the_pr_branch(self, cli, tmp_path, monkeypatch):
         _init_pr_repo(tmp_path)
         monkeypatch.chdir(tmp_path / "work")           # this repo IS on the PR head (feature)
         s = cli._resolve_scope(_ns(scope="pr", pr="1"))
-        assert s["kind"] == "pr" and s["head_checked_out"] is True
+        assert s.kind == "pr" and s.head_checked_out is True
 
     def test_e2e_bundle_records_pr_resolution(self, cli_path, tmp_path):
         consumer = _init_pr_repo(tmp_path)

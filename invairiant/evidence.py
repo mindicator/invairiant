@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from .history import _history_dir
+from .models import ResolvedScope
 from .schemas import _need
 from .scopes import ScopeError, _resolve_scope, _scope_detail
 from .subprocesses import (_MAX_FILE_BYTES, _MAX_SCAN_FILES, _git,
@@ -198,13 +199,13 @@ def _repo_tree(files: list = None) -> list:
     return [{"entry": k, "tracked_files": v} for k, v in sorted(top.items())]
 
 
-def _generated_mass(scope: dict) -> dict:
-    kind, target = scope["kind"], scope["target"]
+def _generated_mass(scope: ResolvedScope) -> dict:
+    kind, target = scope.kind, scope.target
     if kind == "commit":
         num = _run(["git", "show", "--numstat", "--format=", target])[1]
         short = _run(["git", "show", "--shortstat", "--format=", target])[1]
     elif kind in ("range", "pr"):
-        rng = scope.get("range") or target   # pr's target is a number; use its range
+        rng = scope.range or target   # pr's target is a number; use its range
         num = _run(["git", "diff", "--numstat", rng])[1]
         short = _run(["git", "diff", "--shortstat", rng])[1]
     elif kind == "working":
@@ -212,7 +213,7 @@ def _generated_mass(scope: dict) -> dict:
         short = _run(["git", "diff", "--shortstat"])[1]
     else:  # module / adr / rp / repo — a snapshot: report the size of the file set
         sized, total = [], 0
-        for f in scope["files"]:
+        for f in scope.files:
             p = Path(f)
             try:
                 n = sum(1 for _ in p.open("rb")) if (p.is_file() and p.stat().st_size <= _MAX_FILE_BYTES) else 0
@@ -221,7 +222,7 @@ def _generated_mass(scope: dict) -> dict:
             total += n
             sized.append({"file": f, "lines": n})
         sized.sort(key=lambda x: -x["lines"])
-        return {"snapshot": True, "files": len(scope["files"]),
+        return {"snapshot": True, "files": len(scope.files),
                 "total_lines": total, "largest_files": sized[:10]}
     files = []
     for l in num.splitlines():
@@ -274,17 +275,17 @@ def cmd_collect(args) -> int:
     except ScopeError as exc:
         print(f"collect: scope could not be bounded — {exc}", file=sys.stderr)
         return 2
-    scan_files = None if scope["kind"] == "repo" else scope["files"]
+    scan_files = None if scope.kind == "repo" else list(scope.files)
 
-    if scope["kind"] == "pr" and not scope.get("head_checked_out", True):
-        print(f"note: PR #{scope['target']} head ({scope.get('head')}) is not checked "
+    if scope.kind == "pr" and not scope.head_checked_out:
+        print(f"note: PR #{scope.target} head ({scope.head}) is not checked "
               f"out — content signals read the working tree and will be sparse. Run "
-              f"`gh pr checkout {scope['target']}` (or audit in CI, where the PR head "
+              f"`gh pr checkout {scope.target}` (or audit in CI, where the PR head "
               "is the checkout) for full grep fidelity; the diff, file set, and mass "
               "are correct from git regardless.", file=sys.stderr)
 
     cfg, docs = _config_and_docs()
-    docs = list(docs) + list(scope.get("docs", []))   # ADR / proposal text joins canonical docs
+    docs = list(docs) + list(scope.docs)   # ADR / proposal text joins canonical docs
     git_info = {
         "head": _git(["rev-parse", "HEAD"]),
         "branch": _git(["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -297,19 +298,7 @@ def cmd_collect(args) -> int:
     scanned = _scan(patterns, args.cap, budget, files=scan_files)
     imports = scanned.pop("import_boundaries")
 
-    resolved_scope = {
-        "kind": scope["kind"],
-        "target": scope["target"],
-        "bounded": scope["bounded"],
-        "files_in_scope": len(scope["files"]),
-        "sample_files": scope["files"][:25],
-        "has_diff": scope.get("diff") is not None,
-        "docs": [d.get("path") for d in scope.get("docs", [])],
-        "note": scope.get("note", ""),
-    }
-    for _k in ("base", "head", "resolver", "head_checked_out"):   # PR scope records how it was pinned
-        if scope.get(_k) is not None:
-            resolved_scope[_k] = scope[_k]
+    resolved_scope = scope.resolved_block()
     bundle = {
         "schema": "invairiant.evidence-bundle/v1",
         "notice": ("All signals below are candidate pointers gathered by a deterministic "
@@ -321,8 +310,8 @@ def cmd_collect(args) -> int:
             "repo": Path.cwd().name,
             "commit": git_info["head"],
             "branch": git_info["branch"],
-            "scope": scope["kind"],
-            "target": scope["target"],
+            "scope": scope.kind.value,
+            "target": scope.target,
         },
         "scope": _scope_detail(scope),
         "repo_tree": _repo_tree(files=scan_files),
@@ -347,18 +336,18 @@ def cmd_collect(args) -> int:
     # minus provenance.bundle_hash to verify.
     bundle["provenance"] = {
         "commit_sha": git_info["head"],
-        "scope_hash": _sha256({"kind": scope["kind"], "target": scope["target"],
-                               "files": sorted(scope["files"])}),
+        "scope_hash": _sha256({"kind": scope.kind.value, "target": scope.target,
+                               "files": sorted(scope.files)}),
         "generated_by": "invairiant collect",
     }
     bundle["provenance"]["bundle_hash"] = _sha256(bundle)
     payload = json.dumps(bundle, indent=2, ensure_ascii=False)
-    unb = "" if scope["bounded"] else ", UNBOUNDED"
+    unb = "" if scope.bounded else ", UNBOUNDED"
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(payload + "\n", encoding="utf-8")
         n = sum(len(v) for v in bundle["signals"].values())
-        print(f"wrote evidence bundle to {args.out} — scope={_c('1;36', scope['kind'])} "
+        print(f"wrote evidence bundle to {args.out} — scope={_c('1;36', scope.kind.value)} "
               f"({resolved_scope['files_in_scope']} file(s){unb}); {n} candidate "
               f"signal(s); {_dim('raw — keep it gitignored')}")
     else:
