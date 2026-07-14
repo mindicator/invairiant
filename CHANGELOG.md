@@ -7,6 +7,18 @@ follows Keep a Changelog; versions track the protocol.
 
 ### Added
 
+- **Evidence provenance — report binding + citation checks** (issue
+  [#2](https://github.com/mindicator/invairiant/issues/2), building on the first
+  step below). Two more mechanical, judgment-free checks:
+  - The **report** may now carry a `provenance` block (`commit_sha`,
+    `scope_hash`, `bundle_hash`) copied from the bundle it was built from —
+    the report half of the bundle↔report↔commit binding. `validate-report`
+    **warns** when a report with findings omits it and **errors** on a
+    malformed hash. Optional today; a later release will require it.
+  - `validate-report --check-citations [--commit SHA]` — an opt-in
+    **citation-existence** pass: every `file_lines` evidence item must cite a
+    real file whose line range exists (working tree, or at a commit). It
+    confirms "the cited location is real", never whether a finding is true.
 - **Evidence provenance — first step** (from external review, [#2](https://github.com/mindicator/invairiant/issues/2)).
   `collect` now emits a `provenance` block: `commit_sha`, `scope_hash`, and a
   `bundle_hash` that recomputes over the bundle (minus itself) — so a later step

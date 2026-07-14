@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from .history import _claim_key, _history_dir
+from .subprocesses import _run
 from .term import _bad, _c, _die, _dim, _ok, _sev, _warn
 
 def _looks_like_root(p: Path) -> bool:
@@ -147,6 +148,8 @@ def cmd_validate_config(args) -> int:
 
 
 _ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]{3,}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")   # scope_hash / bundle_hash
+_COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$")  # commit_sha (short or full)
 
 
 def _report_threshold(config_path) -> float:
@@ -211,6 +214,22 @@ def _semantic_report_errors(data: dict, low_threshold: float):
         for fid in (a.get("finding_ids") or []):
             if fid not in idset:
                 errs.append(f"required_action references unknown finding id '{fid}'")
+    # provenance: bind report ↔ bundle ↔ commit (issue #2). Optional today —
+    # warn when a report with findings omits it (ahead of a later release that
+    # requires it), and flag a malformed hash if the block is present. Integrity
+    # only; the CLI still never decides whether a finding is real.
+    prov = data.get("provenance")
+    if not prov:
+        if findings:
+            warns.append("no 'provenance' block — a report with findings should carry "
+                         "commit_sha + bundle_hash from the bundle it was built from "
+                         "(`invairiant collect` emits them) so it binds to its commit")
+    else:
+        for key, rx in (("bundle_hash", _SHA256_RE), ("scope_hash", _SHA256_RE),
+                        ("commit_sha", _COMMIT_RE)):
+            val = prov.get(key)
+            if val is not None and not rx.match(str(val)):
+                errs.append(f"provenance.{key} is not a valid hash ('{str(val)[:24]}…')")
     # rejected hypotheses must be kept, not dropped
     if "hypotheses" not in data:
         warns.append("no 'hypotheses' section — rejected hypotheses must be kept, not deleted")
@@ -228,6 +247,54 @@ def _semantic_report_errors(data: dict, low_threshold: float):
             if _claim_key(f.get("claim", "")) in rejected:
                 warns.append(f"{f.get('id')}: claim matches a previously-rejected hypothesis in audit memory — re-verify before shipping")
     return errs, warns
+
+
+def _file_at(path: str, commit: str | None):
+    """The text of `path` at `commit` (git), or the working tree if commit is
+    None. Returns None when the file does not exist there."""
+    if commit:
+        rc, out, _ = _run(["git", "show", f"{commit}:{path}"])
+        return out if rc == 0 else None
+    p = Path(path)
+    if not p.is_file():
+        return None
+    try:
+        return p.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+
+
+def _citation_errors(data: dict, commit: str | None = None):
+    """Opt-in mechanical check (issue #2): every `file_lines` citation points at a
+    real file whose cited line range actually exists. Judgment-free — it confirms
+    "the cited location is real", NOT that the evidence supports the claim (that
+    is the skill's job). Resolves each citation at its own `commit`, else the
+    given `commit`, else the working tree. Returns a list of error strings."""
+    errs = []
+    for f in data.get("findings", []):
+        fid = f.get("id", "?")
+        for e in f.get("evidence", []):
+            if e.get("type") != "file_lines":
+                continue   # only file+line citations are location-checkable
+            path = e.get("file")
+            if not path:
+                errs.append(f"{fid}: file_lines evidence has no 'file' to check")
+                continue
+            at = e.get("commit") or commit
+            whereat = f" at {at[:12]}" if at else ""
+            content = _file_at(path, at)
+            if content is None:
+                errs.append(f"{fid}: cited file '{path}'{whereat} does not exist")
+                continue
+            rng = e.get("lines")
+            if rng:
+                nums = [int(x) for x in rng.split("-")]
+                lo, hi = min(nums), max(nums)
+                total = len(content.splitlines())
+                if lo < 1 or hi > total:
+                    errs.append(f"{fid}: cited lines {rng} out of range in "
+                                f"'{path}'{whereat} ({total} line(s))")
+    return errs
 
 
 _MD_REQUIRED = ["Verdict", "Hypotheses"]
@@ -278,12 +345,20 @@ def cmd_validate_report(args) -> int:
             for e in serrs:
                 print(f"  {_bad('✗')} {p}: {e}")
             errs += len(serrs)
+        if getattr(args, "check_citations", False):
+            cerrs = _citation_errors(data, getattr(args, "commit", None))
+            for e in cerrs:
+                print(f"  {_bad('✗')} {p}: {e}")
+            errs += len(cerrs)
         total += errs
         if errs == 0:
             print(f"  {_ok('✓')} {p}")
     if total:
         _die(f"{total} report problem(s)", 1)
-    print(_ok("OK: report valid.") + ("" if args.md or args.schema_only else " (schema + semantic)"))
+    suffix = "" if args.md or args.schema_only else " (schema + semantic)"
+    if getattr(args, "check_citations", False):
+        suffix += " + citations"
+    print(_ok("OK: report valid.") + suffix)
     return 0
 
 

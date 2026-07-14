@@ -160,7 +160,36 @@ class TestSemanticReportErrors:
                                        verification={"verified_by": "agent-2", "method": "re-read cited lines"})]
         d["summary"]["verdict"] = "pass_with_conditions"
         _, warns = cli._semantic_report_errors(d, 6.0)
+        # the verification-record nudge must not fire when verification is present
+        # (distinct from the report-level provenance-block nudge below)
+        assert not any("verification record" in w for w in warns)
+
+    def test_findings_without_provenance_block_warns(self, cli, base_report, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        d = base_report()
+        d["findings"] = [self._finding(id="T-1")]  # no top-level provenance block
+        d["summary"]["verdict"] = "pass_with_conditions"
+        errs, warns = cli._semantic_report_errors(d, 6.0)
+        assert any("provenance" in w and "bundle_hash" in w for w in warns)  # the binding nudge
+        assert not any("provenance" in e for e in errs)                      # warn, not error
+
+    def test_valid_provenance_block_is_clean(self, cli, base_report, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        d = base_report()
+        d["findings"] = [self._finding(id="T-1", verification={"verified_by": "a", "method": "b"})]
+        d["summary"]["verdict"] = "pass_with_conditions"
+        d["provenance"] = {"commit_sha": "a" * 40, "scope_hash": "b" * 64, "bundle_hash": "c" * 64}
+        errs, warns = cli._semantic_report_errors(d, 6.0)
         assert not any("provenance" in w for w in warns)
+        assert not any("provenance" in e for e in errs)
+
+    def test_malformed_provenance_hash_is_error(self, cli, base_report, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        d = base_report()
+        d["findings"] = [self._finding(id="T-1")]
+        d["provenance"] = {"bundle_hash": "not-a-real-sha256"}
+        errs, _ = cli._semantic_report_errors(d, 6.0)
+        assert any("bundle_hash" in e and "not a valid hash" in e for e in errs)
 
     def test_lens_score_evidence_ref_to_unknown_finding_is_error(self, cli, base_report):
         d = base_report()
@@ -241,3 +270,64 @@ class TestSemanticReportErrors:
         monkeypatch.chdir(tmp_path)
         errs, _ = cli._semantic_report_errors(valid_report, 6.0)
         assert errs == []
+
+
+# --------------------------------------------------------------------------- #
+# _citation_errors  (opt-in: cited file/lines are real — issue #2)
+# --------------------------------------------------------------------------- #
+class TestCitationCheck:
+    def _report(self, evidence):
+        return {"findings": [{"id": "C-1", "evidence": evidence}]}
+
+    def test_real_file_and_line_range_pass(self, cli, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "svc.py").write_text("\n".join(f"line{i}" for i in range(1, 21)))  # 20 lines
+        errs = cli._citation_errors(self._report([
+            {"type": "file_lines", "file": "svc.py", "lines": "5-10"}]))
+        assert errs == []
+
+    def test_missing_file_is_error(self, cli, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        errs = cli._citation_errors(self._report([
+            {"type": "file_lines", "file": "nope.py", "lines": "1"}]))
+        assert any("does not exist" in e and "nope.py" in e for e in errs)
+
+    def test_lines_out_of_range_is_error(self, cli, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "small.py").write_text("a\nb\nc\n")  # 3 lines
+        errs = cli._citation_errors(self._report([
+            {"type": "file_lines", "file": "small.py", "lines": "5-9"}]))
+        assert any("out of range" in e and "small.py" in e and "3 line" in e for e in errs)
+
+    def test_non_file_lines_evidence_is_skipped(self, cli, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        errs = cli._citation_errors(self._report([
+            {"type": "diff_hunk", "hunk": "-a\n+b"}]))
+        assert errs == []
+
+    def test_file_lines_without_file_is_error(self, cli, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        errs = cli._citation_errors(self._report([{"type": "file_lines", "lines": "1"}]))
+        assert any("no 'file'" in e for e in errs)
+
+    def test_file_without_lines_only_checks_existence(self, cli, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "exists.py").write_text("x = 1\n")
+        errs = cli._citation_errors(self._report([
+            {"type": "file_lines", "file": "exists.py"}]))  # no lines -> existence only
+        assert errs == []
+
+    def test_resolves_at_commit(self, cli, monkeypatch, tmp_path):
+        import subprocess
+        monkeypatch.chdir(tmp_path)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.t"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+        (tmp_path / "f.py").write_text("a\nb\nc\n")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "one"], cwd=tmp_path, check=True)
+        # cited at HEAD: 3 lines exist; line 9 does not
+        assert cli._citation_errors(self._report([
+            {"type": "file_lines", "file": "f.py", "lines": "1-3", "commit": "HEAD"}])) == []
+        assert any("out of range" in e for e in cli._citation_errors(self._report([
+            {"type": "file_lines", "file": "f.py", "lines": "9", "commit": "HEAD"}])))

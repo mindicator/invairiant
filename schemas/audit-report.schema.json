@@ -24,6 +24,17 @@
       }
     },
     "scope": { "type": "string", "description": "What was audited and, just as important, what was not." },
+    "provenance": {
+      "type": "object",
+      "description": "Binds this report to the evidence bundle and commit it was built from. Copied from the bundle's own `provenance` block (see evidence-bundle.schema.json) so a later step — the CI Action — can prove the report was produced for THIS commit from THIS bundle and wasn't hand-edited after the audit. Integrity, not judgment: the CLI still never decides whether a finding is real. Optional today; `validate-report` warns when a report with findings omits it, ahead of a later release requiring it.",
+      "additionalProperties": true,
+      "properties": {
+        "commit_sha": { "type": "string", "description": "The commit the audited scope was resolved at (bundle.provenance.commit_sha)." },
+        "scope_hash": { "type": "string", "description": "sha256 over {kind, target, sorted files} of the resolved scope." },
+        "bundle_hash": { "type": "string", "description": "sha256 of the evidence bundle this report was built from (bundle.provenance.bundle_hash)." },
+        "generated_by": { "type": "string" }
+      }
+    },
     "inputs_reviewed": {
       "type": "array",
       "items": { "type": "string" },

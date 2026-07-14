@@ -14,7 +14,7 @@ from .cli import main, cmd_init
 from .models import ScopeKind, ResolvedScope
 from .schemas import (
     framework_root, known_lens_ids, _need, _validator, _errors, _check_lens_refs,
-    _report_threshold, _semantic_report_errors, _md_report_errors,
+    _report_threshold, _semantic_report_errors, _md_report_errors, _citation_errors,
     cmd_validate_config, cmd_validate_report, cmd_ci_gate,
 )
 from .subprocesses import _repo_root, _is_probably_binary, _ls_files, _run, _git

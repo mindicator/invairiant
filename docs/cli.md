@@ -64,7 +64,7 @@ Validate config(s) against
 [`schemas/invairiant.config.schema.json`](../schemas/invairiant.config.schema.json).
 Default path `invairiant.config.yml`. Exit 0 = valid, 1 = problems.
 
-### `invairiant validate-report <paths...> [--schema-only] [--md]`
+### `invairiant validate-report <paths...> [--schema-only] [--md] [--check-citations] [--commit SHA]`
 Validate audit report JSON against
 [`schemas/audit-report.schema.json`](../schemas/audit-report.schema.json)
 (findings resolve against the finding schema) **plus a semantic pass** for the
@@ -81,11 +81,26 @@ protocol rules a schema cannot express:
   deleted);
 - a finding marked `status: verified` carries a `verification` record
   (`verified_by` + `method`) — **warning** for now, so provenance is visible
-  before it becomes required.
+  before it becomes required;
+- the report carries a **`provenance`** block (`commit_sha`, `scope_hash`,
+  `bundle_hash`, copied from the bundle `collect` built it from) that binds it to
+  its commit — **warning** when a report with findings omits it; if present, a
+  malformed hash is an **error**. This is the report half of the
+  bundle↔report↔commit binding (see [issue #2](https://github.com/mindicator/invAIriant/issues/2));
+  the CLI checks the hashes are well-formed, never whether a finding is true.
 
 `--schema-only` runs just the schema check. `--md` structurally lints a
 **rendered markdown** report (H1, sections, verdict, kept hypotheses present) —
-JSON stays the source of truth. Exit 0 = valid, 1 = problems.
+JSON stays the source of truth.
+
+**`--check-citations`** (opt-in) adds a mechanical **citation-existence** pass:
+for every `file_lines` evidence item, it confirms the cited `file` exists and its
+`lines` are in range — at the working tree, or at `--commit SHA` (or each
+evidence item's own `commit`). It is judgment-free — "the cited location is
+real", not "the evidence supports the claim" (that is the skill's job). Off by
+default because the shipped example/case-study reports cite *external*-repo
+files; enable it in a repo where the citations are local (e.g. the PR checkout in
+CI). Exit 0 = valid, 1 = problems.
 
 ### `invairiant collect [--scope KIND] [--range A..B] [--commit SHA] [--pr N] [--path P] [--narrow P] [--out F] [--run-adapters] [--cap N]`
 Gather a deterministic **evidence bundle** for the skill — the CLI's core

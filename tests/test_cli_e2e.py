@@ -152,3 +152,47 @@ class TestDispatch:
         proc = _run(cli_path, repo_root, "validate-report", str(example_report_path))
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "OK" in proc.stdout
+
+
+# --------------------------------------------------------------------------- #
+# validate-report --check-citations (opt-in; issue #2)
+# --------------------------------------------------------------------------- #
+class TestCheckCitations:
+    def _report(self, lines):
+        # A schema-valid report whose one finding cites a real repo file. Run
+        # from repo_root so the cited path resolves against the working tree.
+        return {
+            "title": "citation e2e", "date": "2026-07-14", "audit_type": "pr",
+            "scope": "fixture", "lens_scores": [], "hypotheses": [],
+            "findings": [{
+                "id": "C-001", "severity": "S2", "lens": "parnas",
+                "claim": "A finding that cites a real, checkable file location.",
+                "evidence": [{"type": "file_lines", "file": "cli/invairiant.py", "lines": lines}],
+                "confidence": "high", "status": "verified",
+                "verification": {"verified_by": "t", "method": "read the cited lines"},
+                "risk": "None; this is a citation-check fixture only.",
+                "recommendation": "No action — exercises the citation checker."}],
+            "summary": {"verdict": "pass_with_conditions", "executive_summary": "fixture",
+                        "required_actions": []},
+        }
+
+    def test_real_citation_passes(self, cli_path, repo_root, tmp_path):
+        rp = tmp_path / "ok.json"
+        rp.write_text(json.dumps(self._report("1-5")), encoding="utf-8")
+        proc = _run(cli_path, repo_root, "validate-report", str(rp), "--check-citations")
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "citations" in proc.stdout
+
+    def test_out_of_range_citation_fails(self, cli_path, repo_root, tmp_path):
+        rp = tmp_path / "bad.json"
+        rp.write_text(json.dumps(self._report("1-999999")), encoding="utf-8")
+        proc = _run(cli_path, repo_root, "validate-report", str(rp), "--check-citations")
+        assert proc.returncode == 1
+        assert "out of range" in proc.stdout
+
+    def test_citations_not_checked_without_flag(self, cli_path, repo_root, tmp_path):
+        # Same out-of-range citation, but without --check-citations it is not checked.
+        rp = tmp_path / "unchecked.json"
+        rp.write_text(json.dumps(self._report("1-999999")), encoding="utf-8")
+        proc = _run(cli_path, repo_root, "validate-report", str(rp))
+        assert proc.returncode == 0, proc.stdout + proc.stderr
